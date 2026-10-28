@@ -1,0 +1,2 @@
+CREATE OR REPLACE FUNCTION public._q77_run_suite(_script text) RETURNS text LANGUAGE plpgsql SECURITY INVOKER SET search_path=public AS $$ BEGIN RAISE EXCEPTION 'Temporary SQL runner retired'; END $$;
+REVOKE ALL ON FUNCTION public._q77_run_suite(text) FROM PUBLIC,anon,authenticated,service_role;

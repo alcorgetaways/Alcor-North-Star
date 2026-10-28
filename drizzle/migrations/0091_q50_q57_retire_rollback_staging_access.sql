@@ -1,0 +1,2 @@
+REVOKE SELECT,INSERT,UPDATE ON public.q48_test_stage FROM sandbox_exec;
+COMMENT ON TABLE public.q48_test_stage IS 'DEPRECATED: completed Q48 and Q50–57 rollback verification staging; retained as history, not for future runners.';

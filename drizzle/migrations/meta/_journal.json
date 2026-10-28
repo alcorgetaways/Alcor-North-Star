@@ -1,0 +1,1028 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1792155301740,
+      "tag": "0000_per_pipeline_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792159705792,
+      "tag": "0001_security_infra",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792160273220,
+      "tag": "0002_harden_grants_and_security_functions",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792160298724,
+      "tag": "0003_drop_old_log_admin_action_overload",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792742879188,
+      "tag": "0004_plan_versions_services_custom_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792742932976,
+      "tag": "0005_custom_plan_approval_reject_fix",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792743049351,
+      "tag": "0006_custom_plans_insert_bd_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792743651608,
+      "tag": "0007_commercials_visibility_and_launch_master",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792743688318,
+      "tag": "0008_client_duplicates_merge_reporting",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792743713978,
+      "tag": "0009_fix_merge_clients",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792743750247,
+      "tag": "0010_close_launch_rpc",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792743932182,
+      "tag": "0011_relaunch_accepts_new_closed_statuses",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792744186008,
+      "tag": "0012_fix_merge_clients_cte",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792744745985,
+      "tag": "0013_add_finance_hr_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792744770147,
+      "tag": "0014_lock_launch_commercials",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1792744907658,
+      "tag": "0015_pipelines_membership_activation",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1792746427331,
+      "tag": "0016_launch_phases_and_template_dedup",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792746506761,
+      "tag": "0017_launch_phase_functions",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792747396538,
+      "tag": "0018_must_change_password",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792747509528,
+      "tag": "0019_migration",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792748717016,
+      "tag": "0020_profiles_joined_on_source_sheet_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1792749708630,
+      "tag": "0021_client_import_support",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1792749847774,
+      "tag": "0022_launch_previous_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792750696933,
+      "tag": "0023_client_staff_assignments",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792751755213,
+      "tag": "0024_access_finance_hr_views",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1792760734142,
+      "tag": "0025_commission_terms_review_pipelines",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792762371279,
+      "tag": "0026_contract_decisions_upgrades",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1792763467452,
+      "tag": "0027_stage3_finance_revision_demo",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1792764660567,
+      "tag": "0028_stage3b_terms_demo_void_login_emails",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1792767316249,
+      "tag": "0029_stage3c_min_term_downgrade_property_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1792769046931,
+      "tag": "0030_stage3d_codes_hold_targets_goals_imports",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1792771221181,
+      "tag": "0031_reservation_desk_performance",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1792772879262,
+      "tag": "0032_reservation_desk_fixes",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1792997246848,
+      "tag": "0033_department_scorecards_q31",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1792997420642,
+      "tag": "0034_temporary_staged_sql_test_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1792997493517,
+      "tag": "0035_staged_sql_suite_queue",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1792997655700,
+      "tag": "0036_department_month_target_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1792997765557,
+      "tag": "0037_retire_q31_staged_test_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1792999696124,
+      "tag": "0038_monthly_activity_plans_q33",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1792999764985,
+      "tag": "0039_monthly_activity_scoped_views",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1792999911217,
+      "tag": "0040_activity_review_and_completion_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1792999954462,
+      "tag": "0041_q33_temporary_staged_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1793000011442,
+      "tag": "0042_activity_scorecard_task_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1793000140455,
+      "tag": "0043_activity_plan_identifier_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1793000173702,
+      "tag": "0044_activity_approval_item_alias",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1793000202660,
+      "tag": "0045_activity_explicit_write_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1793000283111,
+      "tag": "0046_activity_version_and_scope_safeguards",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1793000342324,
+      "tag": "0047_activity_task_assignment_options",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1793000474789,
+      "tag": "0048_retire_q33_staged_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1793001231212,
+      "tag": "0049_verification_runner_q8_q34",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1793002810541,
+      "tag": "0050_new_client_account_manager_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1793002890041,
+      "tag": "0051_who_pays_and_influencer_programs",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1793002977125,
+      "tag": "0052_gate_d_evidence_enforcement",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1793003066129,
+      "tag": "0053_influencer_contract_storage_validation",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1793003145498,
+      "tag": "0054_who_pays_service_aliases",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1793003191981,
+      "tag": "0055_influencer_explicit_read_only_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1793003375992,
+      "tag": "0056_plan_tools_insert_and_evidence_safeguards",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1793003396005,
+      "tag": "0057_influencer_service_reconciliation",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1793003499216,
+      "tag": "0058_retire_q8_q34_verification_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1793003586907,
+      "tag": "0059_yash_correction_verification_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1793003687414,
+      "tag": "0060_retire_yash_verification_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1793004772457,
+      "tag": "0061_stage3_blockers_visibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1793004972977,
+      "tag": "0062_stage3_blocker_guard_refinements",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1793005055951,
+      "tag": "0063_approval_blocker_completion_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1793005329260,
+      "tag": "0064_stage3_head_backup_validation",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1793005405373,
+      "tag": "0065_stage3_resolution_and_activation_safeguards",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1793005537085,
+      "tag": "0066_stage3_existing_blocker_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1793005657274,
+      "tag": "0067_stage3_backup_defaults_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1793006833961,
+      "tag": "0068_q43_rollback_verification",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1793006884547,
+      "tag": "0069_q43_staged_rollback_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1793007103953,
+      "tag": "0070_stage3_gate_a_and_owner_approvals",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1793007176050,
+      "tag": "0071_stage3_history_and_personal_digests",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1793007256734,
+      "tag": "0072_stage3_owner_inputs_and_gate_integrity",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1793007503404,
+      "tag": "0073_gate_a_schedule_authorization",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1793007576890,
+      "tag": "0074_stage3_gate_integrity_and_owner_uploads",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1793007656714,
+      "tag": "0075_stage3_record_and_task_insert_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1793007922474,
+      "tag": "0076_retire_q43_verification_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1793008735131,
+      "tag": "0077_plan_specific_exit_checklists",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1793008824686,
+      "tag": "0078_exit_event_integrity",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1793008951935,
+      "tag": "0079_q48_rollback_test_staging",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1793009099962,
+      "tag": "0080_preserve_withdrawn_exit_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1793009242981,
+      "tag": "0081_closing_records_generate_exit_checklist",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1793010341275,
+      "tag": "0082_q50_q57_baselines_combined_reports_source_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1793010650552,
+      "tag": "0083_q57_source_provenance_guard_and_scorecard_bands",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1793010733324,
+      "tag": "0084_q50_regression_staging_sandbox_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1793010852518,
+      "tag": "0085_q50_q57_approval_visibility_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1793010962889,
+      "tag": "0086_q50_baseline_audit_column_alignment",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1793011103567,
+      "tag": "0087_q57_schedule_credential_staging_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1793011136688,
+      "tag": "0088_q57_retire_schedule_credential_sandbox_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1793011219229,
+      "tag": "0089_q57_report_source_approved_values",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1793011456527,
+      "tag": "0090_q57_report_social_aggregate_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1793011510788,
+      "tag": "0091_q50_q57_retire_rollback_staging_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1793014676963,
+      "tag": "0092_q59_q61_owner_report_and_red_alerts",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1793014781056,
+      "tag": "0093_q59_q61_dedupe_conflict_predicate",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1793016188090,
+      "tag": "0094_source_value_ignores_before_alcor",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1793019408512,
+      "tag": "0095_gbp_ops_duties",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1793019519936,
+      "tag": "0096_gbp_ops_duties_no_backdated",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1793020567549,
+      "tag": "0097_action_tracker_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1793021209428,
+      "tag": "0098_fix_update_recurring_task_overload",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1793021978986,
+      "tag": "0099_gbp_profile_names_rpc",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1793023923127,
+      "tag": "0100_fetched_review_back_months_portfolio_label",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1793027366985,
+      "tag": "0101_source_dashboard_status_rpc",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1793028125834,
+      "tag": "0102_fetched_values_assigned_staff_and_bd_read",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1793029125159,
+      "tag": "0103_source_monthly_agg",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1793030458424,
+      "tag": "0104_gbp_analytics_audit_q68",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1793030614035,
+      "tag": "0105_source_profile_names_q68",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1793034699901,
+      "tag": "0106_security_q69",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1793034931711,
+      "tag": "0107_launch_hold_columns_grant",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1793035093947,
+      "tag": "0108_temp_suite_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1793035170353,
+      "tag": "0109_retire_temp_suite_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1793036462897,
+      "tag": "0110_qa_calc_integrity",
+      "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1793036833448,
+      "tag": "0111_qa_suite_runner_invoker",
+      "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1793036922796,
+      "tag": "0112_qa_suite_stage_grant",
+      "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1793036964970,
+      "tag": "0113_qa_run_staged_suites",
+      "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1793037042075,
+      "tag": "0114_qa_rerun_three_suites",
+      "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1793037097581,
+      "tag": "0115_qa_suite_stage_lock",
+      "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1793037751999,
+      "tag": "0116_qa_flows_forms",
+      "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1793037954536,
+      "tag": "0117_sales_goals_clear",
+      "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1793038324671,
+      "tag": "0118_qa71_temp_suite_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1793038347198,
+      "tag": "0119_qa71_temp_suite_runner_notice",
+      "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1793038394380,
+      "tag": "0120_qa71_temp_rest_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1793038700989,
+      "tag": "0121_qa71_retire_suite_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1793039510929,
+      "tag": "0122_action_completion_and_task_digest",
+      "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1793039690381,
+      "tag": "0123_q72_temp_suite_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1793039888306,
+      "tag": "0124_q72_retire_suite_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1793042112786,
+      "tag": "0125_qa73_atomic_rd_followup",
+      "breakpoints": true
+    },
+    {
+      "idx": 126,
+      "version": "7",
+      "when": 1793042385795,
+      "tag": "0126_qa73_temporary_suite_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 127,
+      "version": "7",
+      "when": 1793042945161,
+      "tag": "0127_qa73_retire_temporary_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 128,
+      "version": "7",
+      "when": 1793045053894,
+      "tag": "0128_main_kpi_flags_and_definitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 129,
+      "version": "7",
+      "when": 1793046570745,
+      "tag": "0129_main_kpi_owner_safety_and_source_extras",
+      "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1793046779804,
+      "tag": "0130_main_kpi_test_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 131,
+      "version": "7",
+      "when": 1793046832536,
+      "tag": "0131_main_kpi_suite_staging_grant",
+      "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1793046872116,
+      "tag": "0132_main_kpi_locked_staging_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "7",
+      "when": 1793046916645,
+      "tag": "0133_main_kpi_privileged_suite_caller",
+      "breakpoints": true
+    },
+    {
+      "idx": 134,
+      "version": "7",
+      "when": 1793047439635,
+      "tag": "0134_retire_main_kpi_test_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 135,
+      "version": "7",
+      "when": 1793047848045,
+      "tag": "0135_main_kpi_unambiguous_metric_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1793048413772,
+      "tag": "0136_main_kpi_source_precedence_and_all_display",
+      "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1793048496532,
+      "tag": "0137_main_social_verified_timeline_display",
+      "breakpoints": true
+    },
+    {
+      "idx": 138,
+      "version": "7",
+      "when": 1793049205386,
+      "tag": "0138_retire_kpi_center_verification_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 139,
+      "version": "7",
+      "when": 1793050241796,
+      "tag": "0139_staff_qa_temporary_rollback_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "7",
+      "when": 1793051018788,
+      "tag": "0140_retire_staff_qa_rollback_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1793105745093,
+      "tag": "0141_gate_a_scope_to_gate_week",
+      "breakpoints": true
+    },
+    {
+      "idx": 142,
+      "version": "7",
+      "when": 1793106839348,
+      "tag": "0142_historical_completed_checklists",
+      "breakpoints": true
+    },
+    {
+      "idx": 143,
+      "version": "7",
+      "when": 1793106995203,
+      "tag": "0143_q77_temporary_test_runner",
+      "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "7",
+      "when": 1793107145548,
+      "tag": "0144_historical_checklists_read_only_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 145,
+      "version": "7",
+      "when": 1793107256343,
+      "tag": "0145_retire_q77_test_runner",
+      "breakpoints": true
+    }
+  ]
+}

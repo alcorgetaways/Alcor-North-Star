@@ -1,0 +1,1 @@
+GRANT SELECT, INSERT, UPDATE ON public.q48_test_stage TO sandbox_exec;

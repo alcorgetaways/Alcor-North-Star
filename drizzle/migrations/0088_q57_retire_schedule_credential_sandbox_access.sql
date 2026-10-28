@@ -1,0 +1,1 @@
+REVOKE INSERT ON public.cron_secrets FROM sandbox_exec;

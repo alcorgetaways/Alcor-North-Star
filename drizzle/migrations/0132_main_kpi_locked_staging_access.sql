@@ -1,0 +1,1 @@
+GRANT SELECT,INSERT,UPDATE ON public._q69_suites TO sandbox_exec;

@@ -1,0 +1,2 @@
+-- QA-14: a finance manager may clear an explicit monthly goal (the month falls back to the default goal). Same people who can edit goals.
+CREATE POLICY "finance clears goals" ON public.sales_goals FOR DELETE TO authenticated USING (public.can_manage_finance(auth.uid()));

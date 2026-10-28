@@ -1,0 +1,1 @@
+GRANT INSERT ON public.cron_secrets TO sandbox_exec;

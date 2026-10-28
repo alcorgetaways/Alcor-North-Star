@@ -1,0 +1,1 @@
+DO $$ DECLARE r record; s text; BEGIN FOR r IN SELECT oid FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname IN ('save_pipeline_baseline','approve_pipeline_baseline','confirm_kpi_mapping') LOOP SELECT pg_get_functiondef(r.oid) INTO s; EXECUTE replace(s,'target_table','target_type'); END LOOP; END $$;

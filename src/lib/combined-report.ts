@@ -1,0 +1,3 @@
+import type { MainKpi } from "./main-kpis";
+export type CombinedKpi = { id: string; name: string; target: number | null; actual: number | null; text_value: string | null; achievement: number | null; baseline: number | null; baseline_month: string | null };
+export type CombinedReport = { client_id: string; hotel_name: string; month: string; scorecard: { overall: number | null }; sections: Array<{ id: string; pipeline_id: string; pipeline: string; code: string; main_kpis?: MainKpi[]; highlights: string[]; work_items: string[]; next_month_action: string | null; kpis: CombinedKpi[]; source_values: Array<{ source: string; values: Record<string, number | null>; fetched_at: string }> }> };

@@ -1,0 +1,66 @@
+-- Rollback-only signed-plan exit rules.
+DO $$
+DECLARE c uuid:=gen_random_uuid(); l uuid; p uuid; adm uuid:=gen_random_uuid(); mgr uuid:=gen_random_uuid(); own uuid:=gen_random_uuid(); fin uuid:=gen_random_uuid(); task uuid; cp uuid; custom uuid; n int; passed int:=0; d date; j jsonb;
+BEGIN
+ INSERT INTO auth.users(id,instance_id,aud,role,email,raw_user_meta_data,created_at,updated_at)
+ SELECT id,'00000000-0000-0000-0000-000000000000','authenticated','authenticated',email,'{}',now(),now() FROM (VALUES(adm,'q48-admin@test.local'),(mgr,'q48-management@test.local'),(own,'q48-owner@test.local'),(fin,'q48-finance@test.local'))v(id,email);
+ UPDATE profiles SET status='active',must_change_password=false WHERE id IN(adm,mgr,own,fin);
+ DELETE FROM user_roles WHERE user_id IN(adm,mgr,own,fin);
+ INSERT INTO user_roles(user_id,role) VALUES(adm,'admin'),(mgr,'management'),(own,'client'),(fin,'finance');
+ IF (SELECT count(*) FROM offboarding_templates)<>58 OR EXISTS(SELECT 1 FROM offboarding_templates WHERE active) THEN RAISE EXCEPTION '58 generic templates must remain inactive'; END IF;passed:=passed+1;
+ INSERT INTO clients(id,hotel_name,is_demo)VALUES(c,'Q48 rollback hotel',false); UPDATE profiles SET client_id=c WHERE id=own;
+ FOR p IN SELECT id FROM plans WHERE code IN('gmb_seo','diamond_start','diamond_grow','diamond_scale') LOOP
+   INSERT INTO client_launches(client_id,plan_id,status,notice_days) VALUES(c,p,'live',30)RETURNING id INTO l;
+   PERFORM set_config('request.jwt.claims',json_build_object('sub',adm,'role','authenticated')::text,true);
+   SELECT count(*) INTO n FROM effective_exit_items(l);
+   IF n<>(CASE (SELECT code FROM plans WHERE id=p) WHEN 'gmb_seo' THEN 9 WHEN 'diamond_scale' THEN 11 ELSE 10 END) THEN RAISE EXCEPTION 'Wrong plan list'; END IF;passed:=passed+1;
+   d:=record_termination_notice(l,'2026-10-01','client',NULL,NULL);
+   IF d<>'2026-10-31' THEN RAISE EXCEPTION '30-day snapshot notice must win'; END IF;passed:=passed+1;
+   IF (SELECT count(*) FROM client_tasks WHERE launch_id=l AND phase='offboarding')<>n THEN RAISE EXCEPTION 'Generated count mismatch'; END IF;passed:=passed+1;
+   IF EXISTS(SELECT 1 FROM client_tasks WHERE launch_id=l AND code IN('EXIT.2b','EXIT.5a') AND due_date<>'2026-11-07') THEN RAISE EXCEPTION 'Exit plus 7'; END IF;passed:=passed+1;
+   IF EXISTS(SELECT 1 FROM client_tasks WHERE launch_id=l AND code IN('EXIT.1a','EXIT.1b') AND due_date<>'2026-10-01') THEN RAISE EXCEPTION 'Notice date'; END IF;passed:=passed+1;
+   IF EXISTS(SELECT 1 FROM client_tasks WHERE launch_id=l AND code=CASE WHEN (SELECT code FROM plans WHERE id=p)='gmb_seo' THEN 'EXIT.3a' ELSE 'EXIT.3b' END AND due_date<>'2026-10-30') THEN RAISE EXCEPTION 'Before exit minus 1'; END IF;passed:=passed+1;
+   IF (SELECT code FROM plans WHERE id=p)='diamond_scale' AND NOT EXISTS(SELECT 1 FROM client_tasks WHERE launch_id=l AND code='EXIT.4c' AND exit_financial AND due_date='2026-10-31') THEN RAISE EXCEPTION 'Scale advance reconciliation'; END IF;
+   BEGIN PERFORM complete_offboarding(l); RAISE EXCEPTION 'Incomplete closure accepted'; EXCEPTION WHEN OTHERS THEN IF SQLERRM NOT LIKE 'All exit items must be Done%' THEN RAISE; END IF; END;passed:=passed+1;
+   PERFORM set_config('request.jwt.claims',json_build_object('sub',own,'role','authenticated')::text,true);
+   j:=exit_workspace(l); IF EXISTS(SELECT 1 FROM jsonb_array_elements(j)x WHERE x->>'owner_side' NOT IN('Hotel','Both')) THEN RAISE EXCEPTION 'Owner internal scope'; END IF;passed:=passed+1;
+   SELECT id INTO task FROM client_tasks WHERE launch_id=l AND exit_owner_side='Hotel' LIMIT 1; PERFORM update_exit_item(task,'done',NULL); IF NOT EXISTS(SELECT 1 FROM client_tasks WHERE id=task AND status='done' AND done_by=own) THEN RAISE EXCEPTION 'Owner completion'; END IF;passed:=passed+1;
+   SELECT id INTO task FROM client_tasks WHERE launch_id=l AND exit_owner_side='Alcor' AND NOT exit_financial LIMIT 1;
+   BEGIN PERFORM update_exit_item(task,'done',NULL); RAISE EXCEPTION 'Owner completed Alcor task'; EXCEPTION WHEN OTHERS THEN IF SQLERRM NOT LIKE '%not assigned%' THEN RAISE; END IF; END;passed:=passed+1;
+   PERFORM set_config('request.jwt.claims',json_build_object('sub',fin,'role','authenticated')::text,true); j:=exit_workspace(l);
+   IF jsonb_array_length(j)=0 OR EXISTS(SELECT 1 FROM jsonb_array_elements(j)x WHERE NOT (x->>'financial')::boolean) THEN RAISE EXCEPTION 'Finance scope'; END IF;passed:=passed+1;
+   PERFORM set_config('request.jwt.claims',json_build_object('sub',mgr,'role','authenticated')::text,true);
+   BEGIN PERFORM override_offboarding(l,'Management cannot override'); RAISE EXCEPTION 'Management override accepted'; EXCEPTION WHEN OTHERS THEN IF SQLERRM NOT LIKE 'Admin must%' THEN RAISE; END IF; END;passed:=passed+1;
+   PERFORM set_config('request.jwt.claims',json_build_object('sub',adm,'role','authenticated')::text,true);
+   BEGIN PERFORM override_offboarding(l,' '); RAISE EXCEPTION 'Blank override accepted'; EXCEPTION WHEN OTHERS THEN IF SQLERRM NOT LIKE 'Admin must%' THEN RAISE; END IF; END;passed:=passed+1;
+   PERFORM override_offboarding(l,'Approved exceptional exit');
+   IF NOT EXISTS(SELECT 1 FROM admin_audit_log WHERE actor=adm AND action='offboarding_override' AND target_id=l::text AND details->>'reason'='Approved exceptional exit') OR NOT EXISTS(SELECT 1 FROM client_launches WHERE id=l AND status='closed') OR NOT EXISTS(SELECT 1 FROM client_tasks WHERE launch_id=l AND status='not_started') THEN RAISE EXCEPTION 'Override audit/history'; END IF;passed:=passed+1;
+ END LOOP;
+ INSERT INTO activity_holidays(day,name)VALUES('2098-01-06','Q48 holiday');
+ IF exit_working_after('2098-01-04',15)<>'2098-01-23' THEN RAISE EXCEPTION '15 working days must skip Sundays and holiday'; END IF;passed:=passed+1;
+ SELECT id INTO p FROM plans WHERE code='gmb_seo';
+ INSERT INTO client_launches(client_id,plan_id,status,notice_days)VALUES(c,p,'live',NULL)RETURNING id INTO l;
+ IF record_termination_notice(l,'2026-10-01','client',NULL,NULL)<>'2026-12-30' THEN RAISE EXCEPTION 'GMB default 90 days'; END IF;passed:=passed+1;
+ IF (SELECT due_date FROM client_tasks WHERE launch_id=l AND code='EXIT.4b')<>exit_working_after('2026-12-30',15) THEN RAISE EXCEPTION 'Refund generated working deadline'; END IF;passed:=passed+1;
+ UPDATE client_tasks SET status='done' WHERE launch_id=l;
+ PERFORM complete_offboarding(l); IF (SELECT status FROM client_launches WHERE id=l)<>'closed' THEN RAISE EXCEPTION 'All Done closure'; END IF;passed:=passed+1;
+ INSERT INTO client_launches(client_id,plan_id,status)VALUES(c,p,'closed')RETURNING id INTO l;
+ IF EXISTS(SELECT 1 FROM client_tasks WHERE launch_id=l) THEN RAISE EXCEPTION 'Closed client back-generated'; END IF;passed:=passed+1;
+ INSERT INTO custom_plans(name,base_plan_version_id) SELECT 'Q48 rollback custom',id FROM plan_versions WHERE plan_id=p ORDER BY version DESC LIMIT 1 RETURNING id INTO cp;
+ IF cp IS NULL THEN RAISE EXCEPTION 'Custom test requires a base version'; END IF;
+  INSERT INTO client_launches(client_id,plan_id,custom_plan_id,status) SELECT c,v.plan_id,cp,'live' FROM custom_plans x JOIN plan_versions v ON v.id=x.base_plan_version_id WHERE x.id=cp RETURNING id INTO l;
+  SELECT count(*) INTO n FROM effective_exit_items(l); IF n NOT IN(9,10,11) THEN RAISE EXCEPTION 'Custom base inheritance'; END IF;passed:=passed+1;
+  PERFORM custom_exit_copy(cp); UPDATE exit_checklist_items SET item_text='Q48 custom future item' WHERE custom_plan_id=cp AND code='1a';
+  IF NOT EXISTS(SELECT 1 FROM effective_exit_items(l) WHERE item_text='Q48 custom future item') THEN RAISE EXCEPTION 'Custom override'; END IF;passed:=passed+1;
+ PERFORM record_termination_notice(l,'2026-10-01','client',NULL,NULL);
+ SELECT count(*) INTO n FROM client_tasks WHERE launch_id=l AND phase='offboarding';
+ PERFORM withdraw_termination_notice(l,'Q48 withdrawal');
+ IF (SELECT count(*) FROM client_tasks WHERE launch_id=l AND phase='offboarding')<>n OR EXISTS(SELECT 1 FROM client_tasks WHERE launch_id=l AND NOT exit_withdrawn) THEN RAISE EXCEPTION 'Withdrawal deleted history'; END IF;passed:=passed+1;
+ PERFORM record_termination_notice(l,'2026-11-01','client',NULL,NULL);
+ IF (SELECT count(*) FROM client_tasks WHERE launch_id=l AND phase='offboarding' AND NOT exit_withdrawn)<>n THEN RAISE EXCEPTION 'New notice must snapshot fresh list'; END IF;passed:=passed+1;
+ PERFORM override_offboarding(l,'Close rollback custom fixture');
+ INSERT INTO client_launches(client_id,plan_id,status,notice_days) VALUES(c,p,'live',30) RETURNING id INTO l;
+ PERFORM close_launch(l,(SELECT code FROM closing_reasons ORDER BY code LIMIT 1),'Q48 closing record');
+ IF (SELECT status FROM client_launches WHERE id=l)<>'offboarding' OR (SELECT count(*) FROM client_tasks WHERE launch_id=l AND phase='offboarding')<>9 THEN RAISE EXCEPTION 'Closing record skipped exit checklist'; END IF;passed:=passed+1;
+ RAISE EXCEPTION 'Q48 EXIT TESTS PASSED: % assertions',passed;
+END $$;

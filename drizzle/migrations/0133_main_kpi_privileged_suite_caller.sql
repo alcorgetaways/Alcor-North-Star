@@ -1,0 +1,1 @@
+GRANT EXECUTE ON FUNCTION public._q74_run_suite(text) TO supabase_read_only_user;

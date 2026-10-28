@@ -1,0 +1,2 @@
+UPDATE public.pipeline_members SET backup_id=public.pipeline_default_backup(pipeline_id) WHERE active AND backup_id IS NULL;
+DO $$ DECLARE f text;BEGIN SELECT pg_get_functiondef('public.activity_workspace(date,uuid,text,boolean)'::regprocedure) INTO f;f:=replace(f,'''blocker_reason'',t.blocker_reason,','''blocker_reason'',t.blocker_reason,''blocker_impact'',t.blocker_impact,');EXECUTE f;END $$;

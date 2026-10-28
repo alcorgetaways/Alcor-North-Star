@@ -1,0 +1,51 @@
+-- Q33 rollback-safe fixtures and concrete owner rules.
+DO $$
+DECLARE head_id uuid:=gen_random_uuid(); backup uuid:=gen_random_uuid(); own uuid:=gen_random_uuid(); stranger uuid:=gen_random_uuid(); admin_id uuid:=gen_random_uuid(); c uuid:=gen_random_uuid(); pid uuid; cp uuid; pl uuid; p uuid; p2 uuid; t uuid; j jsonb; items jsonb; n int; pass int:=0; k uuid:=gen_random_uuid();
+BEGIN
+ IF launch_due_date('2026-10-04',1)<>'2026-10-11'::date THEN RAISE EXCEPTION 'Calendar launch days'; END IF;pass:=pass+1;
+ INSERT INTO activity_holidays(day,name) VALUES('2098-01-06','Q33 holiday');
+ IF activity_working_before('2098-01-08',2)<>'2098-01-04'::date THEN RAISE EXCEPTION 'Two working days crosses holiday';END IF;pass:=pass+1;
+ IF activity_working_before('2098-01-08',5)<>'2098-01-01'::date THEN RAISE EXCEPTION 'Five working days crosses Sunday and holiday';END IF;pass:=pass+1;
+ INSERT INTO auth.users(id,instance_id,aud,role,email,raw_user_meta_data,created_at,updated_at) VALUES
+ (head_id,'00000000-0000-0000-0000-000000000000','authenticated','authenticated','q33-head@test.local','{}',now(),now()),(backup,'00000000-0000-0000-0000-000000000000','authenticated','authenticated','q33-backup@test.local','{}',now(),now()),(own,'00000000-0000-0000-0000-000000000000','authenticated','authenticated','q33-owner@test.local','{}',now(),now()),(stranger,'00000000-0000-0000-0000-000000000000','authenticated','authenticated','q33-stranger@test.local','{}',now(),now()),(admin_id,'00000000-0000-0000-0000-000000000000','authenticated','authenticated','q33-admin@test.local','{}',now(),now());
+ UPDATE profiles SET must_change_password=false,status='active' WHERE id IN(head_id,backup,own,stranger,admin_id);
+ DELETE FROM user_roles WHERE user_id IN(head_id,backup,own,stranger,admin_id);
+ INSERT INTO user_roles(user_id,role) VALUES(head_id,'pipeline_manager'),(backup,'team_member'),(own,'client'),(stranger,'client'),(admin_id,'admin');
+ INSERT INTO clients(id,hotel_name) VALUES(c,'Q33 rollback property'); UPDATE profiles SET client_id=c WHERE id=own;
+ SELECT id INTO pid FROM pipelines WHERE code='social_media';SELECT id INTO pl FROM plans ORDER BY sort_order LIMIT 1;
+ INSERT INTO client_launches(client_id,plan_id,status) VALUES(c,pl,'active');
+ INSERT INTO client_pipelines(client_id,pipeline_id,status) VALUES(c,pid,'active') ON CONFLICT(client_id,pipeline_id) DO UPDATE SET status='active' RETURNING id INTO cp;
+ INSERT INTO pipeline_members(pipeline_id,user_id,role) VALUES(pid,head_id,'head'),(pid,backup,'team_member');
+ INSERT INTO client_staff_assignments(client_id,pipeline_id,user_id,role,source) VALUES(c,pid,head_id,'head','manual'),(c,pid,backup,'team_member','manual') ON CONFLICT DO NOTHING;
+ items:=jsonb_build_array(jsonb_build_object('occurrence_key',k,'name','Sunday reel','quantity',2,'publish_on','2098-01-05','owner_id',head_id,'backup_id',backup));
+ PERFORM set_config('request.jwt.claims',json_build_object('sub',head_id,'role','authenticated')::text,true);EXECUTE 'SET LOCAL ROLE authenticated';
+ p:=save_activity_plan(cp,'2098-01-01',items,NULL,true);
+ SELECT count(*) INTO n FROM recurring_tasks WHERE plan_id=p;IF n<>0 THEN RAISE EXCEPTION 'Generated before approval';END IF;pass:=pass+1;
+ BEGIN PERFORM decide_activity_plan(p,true,NULL);RAISE EXCEPTION 'Head approved owner plan';EXCEPTION WHEN OTHERS THEN IF SQLERRM<>'Only this hotel owner can decide the plan' THEN RAISE;END IF;END;pass:=pass+1;
+ PERFORM set_config('request.jwt.claims',json_build_object('sub',stranger,'role','authenticated')::text,true);
+ SELECT count(*) INTO n FROM activity_plans WHERE id=p;IF n<>0 THEN RAISE EXCEPTION 'Other owner reads plan';END IF;pass:=pass+1;
+ PERFORM set_config('request.jwt.claims',json_build_object('sub',own,'role','authenticated')::text,true);
+ BEGIN PERFORM decide_activity_plan(p,false,'');RAISE EXCEPTION 'Empty change comment';EXCEPTION WHEN OTHERS THEN IF SQLERRM<>'Add a comment for requested changes' THEN RAISE;END IF;END;pass:=pass+1;
+ PERFORM decide_activity_plan(p,false,'Change caption');pass:=pass+1;
+ PERFORM set_config('request.jwt.claims',json_build_object('sub',head_id,'role','authenticated')::text,true);p:=save_activity_plan(cp,'2098-01-01',items,p,true);
+ PERFORM set_config('request.jwt.claims',json_build_object('sub',own,'role','authenticated')::text,true);PERFORM decide_activity_plan(p,true,NULL);pass:=pass+1;
+ EXECUTE 'RESET ROLE';
+ SELECT count(*) INTO n FROM recurring_tasks WHERE plan_id=p;IF n<>3 THEN RAISE EXCEPTION 'Three task stages';END IF;pass:=pass+1;
+ IF NOT EXISTS(SELECT 1 FROM recurring_tasks WHERE plan_id=p AND stage='publish' AND due_date='2098-01-05') THEN RAISE EXCEPTION 'Sunday publish moved';END IF;pass:=pass+1;
+ IF EXISTS(SELECT 1 FROM recurring_tasks WHERE plan_id=p AND (owner_id<>head_id OR backup_id<>backup)) THEN RAISE EXCEPTION 'Required task assignments';END IF;pass:=pass+1;
+ SELECT id INTO t FROM recurring_tasks WHERE plan_id=p AND stage='publish';
+ PERFORM set_config('request.jwt.claims',json_build_object('sub',backup,'role','authenticated')::text,true);EXECUTE 'SET LOCAL ROLE authenticated';PERFORM update_recurring_task(t,'done');pass:=pass+1;
+ PERFORM set_config('request.jwt.claims',json_build_object('sub',head_id,'role','authenticated')::text,true);j:=activity_workspace('2098-01-01',c,NULL,false);IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(j->'plans') x WHERE (x->>'done')::int=2 AND (x->>'planned')::int=2) THEN RAISE EXCEPTION 'Done quantity';END IF;pass:=pass+1;
+ p2:=save_activity_plan(cp,'2098-01-01',items,p,true);IF p2=p THEN RAISE EXCEPTION 'Approved edit overwrote version';END IF;pass:=pass+1;
+ PERFORM set_config('request.jwt.claims',json_build_object('sub',own,'role','authenticated')::text,true);PERFORM decide_activity_plan(p2,true,NULL);
+ EXECUTE 'RESET ROLE';IF NOT EXISTS(SELECT 1 FROM recurring_tasks WHERE id=t AND status='done') OR (SELECT count(*) FROM recurring_tasks WHERE family_id=p AND stage='publish' AND status='done')<>1 THEN RAISE EXCEPTION 'Done history lost or duplicated';END IF;pass:=pass+1;
+ PERFORM flag_monthly_activity_missed('2098-02-01');IF (SELECT count(*) FROM recurring_tasks WHERE plan_id=p2 AND status='missed_review')<>2 THEN RAISE EXCEPTION 'Month end flag';END IF;pass:=pass+1;
+ SELECT id INTO t FROM recurring_tasks WHERE plan_id=p2 AND status='missed_review' LIMIT 1;
+ PERFORM set_config('request.jwt.claims',json_build_object('sub',head_id,'role','authenticated')::text,true);EXECUTE 'SET LOCAL ROLE authenticated';
+ BEGIN PERFORM update_recurring_task(t,'closed');RAISE EXCEPTION 'Close without reason';EXCEPTION WHEN OTHERS THEN IF SQLERRM<>'Head review and a reason are required' THEN RAISE;END IF;END;pass:=pass+1;
+ PERFORM update_recurring_task(t,'not_started','2098-02-05','Owner requested delay');pass:=pass+1;
+ EXECUTE 'RESET ROLE';IF NOT EXISTS(SELECT 1 FROM recurring_tasks WHERE id=t AND due_date='2098-02-05' AND original_due_date<'2098-02-01') THEN RAISE EXCEPTION 'Reschedule destroys original date';END IF;pass:=pass+1;
+ IF EXISTS(SELECT 1 FROM activity_plans WHERE client_pipeline_id=cp AND month='2098-02-01') THEN RAISE EXCEPTION 'Auto carried month';END IF;pass:=pass+1;
+ IF has_function_privilege('anon','public.activity_workspace(date,uuid,text,boolean)','EXECUTE') OR has_table_privilege('authenticated','public.activity_plans','UPDATE') THEN RAISE EXCEPTION 'Unscoped access';END IF;pass:=pass+1;
+ RAISE EXCEPTION 'Q33 TESTS PASSED: %/22',pass;
+END $$;

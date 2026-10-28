@@ -1,0 +1,1 @@
+DO $$ DECLARE f text; BEGIN SELECT pg_get_functiondef('public.decide_activity_plan(uuid,boolean,text)'::regprocedure) INTO f; f:=replace(f,'FROM activity_items i WHERE i.plan_id=p.id AND (SELECT','FROM activity_items ai WHERE ai.plan_id=p.id AND (SELECT'); f:=replace(f,'a.user_id IN(i.owner_id,i.backup_id))<>2','a.user_id IN(ai.owner_id,ai.backup_id))<>2');EXECUTE f; END $$;

@@ -1,0 +1,2 @@
+CREATE TABLE public.q48_test_stage(name text PRIMARY KEY,script text NOT NULL,result text);
+GRANT ALL ON public.q48_test_stage TO service_role; ALTER TABLE public.q48_test_stage ENABLE ROW LEVEL SECURITY; COMMENT ON TABLE public.q48_test_stage IS 'Temporary rollback-only SQL test staging; retire after validation.';

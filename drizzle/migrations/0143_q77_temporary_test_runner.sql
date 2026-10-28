@@ -1,0 +1,3 @@
+CREATE OR REPLACE FUNCTION public._q77_run_suite(_script text) RETURNS text LANGUAGE plpgsql SECURITY INVOKER SET search_path=public AS $$ BEGIN EXECUTE _script; RETURN 'FAIL suite did not roll back'; EXCEPTION WHEN OTHERS THEN RETURN SQLERRM; END $$;
+REVOKE ALL ON FUNCTION public._q77_run_suite(text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public._q77_run_suite(text) TO service_role;

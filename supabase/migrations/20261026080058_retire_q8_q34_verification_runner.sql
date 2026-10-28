@@ -1,0 +1,1 @@
+REVOKE ALL ON public._q31_test_stage FROM service_role; CREATE OR REPLACE FUNCTION public._q31_run_staged_trigger() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=public AS $$ BEGIN RAISE EXCEPTION 'Temporary SQL runner retired'; END $$; COMMENT ON TABLE public._q31_test_stage IS 'RETIRED: empty rollback verification queue, no grants and no SQL execution.';

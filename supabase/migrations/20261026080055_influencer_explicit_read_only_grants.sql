@@ -1,0 +1,1 @@
+REVOKE ALL ON public.influencer_programs FROM anon,authenticated; GRANT SELECT ON public.influencer_programs TO authenticated; GRANT ALL ON public.influencer_programs TO service_role;

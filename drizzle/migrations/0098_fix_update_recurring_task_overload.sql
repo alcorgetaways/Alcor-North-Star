@@ -1,0 +1,1 @@
+DROP FUNCTION public.update_recurring_task(uuid, text, date, text, uuid, uuid);

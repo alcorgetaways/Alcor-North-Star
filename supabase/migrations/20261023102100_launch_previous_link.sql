@@ -1,0 +1,1 @@
+ALTER TABLE public.client_launches ADD COLUMN IF NOT EXISTS previous_launch_id uuid REFERENCES public.client_launches(id) ON DELETE SET NULL;
