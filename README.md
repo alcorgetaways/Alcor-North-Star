@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Welcome to your Lovable project
 
 This project was built with [Lovable](https://lovable.dev).
@@ -27,3 +28,7 @@ npm run dev
 - TypeScript
 - React
 - Tailwind CSS
+=======
+# Alcor-North-Star
+Alcor North star is a in-house build application. It manages the KPI's of the client's andthe staff.
+>>>>>>> 69e1323fdd9d1ed721e7c0ae08a8ceb211a897ba
