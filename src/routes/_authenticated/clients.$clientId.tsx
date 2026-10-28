@@ -56,6 +56,7 @@ import {
 import { LAUNCH_STATUS_LABEL, fmtDate, launchWeek } from "@/lib/launch";
 import { cn } from "@/lib/utils";
 import { SegmentedPill } from "@/components/SegmentedPill";
+import { ClientPayments } from "@/components/ClientPayments";
 
 const inrFmt = (n: number) => `₹${new Intl.NumberFormat("en-IN").format(n)}`;
 
@@ -872,6 +873,7 @@ function ClientProfile() {
     { id: "pipelines", label: "Pipelines" },
     ...(gbpCp ? [{ id: "gbp", label: "GBP" }] : []),
     { id: "commercials", label: "Commercials" },
+    { id: "payments", label: "Payments" },
     { id: "documents", label: "Documents" },
     { id: "performance", label: "Performance" },
     { id: "targets", label: "Targets" },
@@ -964,6 +966,8 @@ function ClientProfile() {
             ))
           )
         ) : null}
+
+        {tab === "payments" ? <ClientPayments clientId={clientId} /> : null}
 
         {tab === "gbp" && gbpCp ? (
           <div className="space-y-4">

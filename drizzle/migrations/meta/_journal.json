@@ -1023,6 +1023,13 @@
       "when": 1793107256343,
       "tag": "0145_retire_q77_test_runner",
       "breakpoints": true
+    },
+    {
+      "idx": 146,
+      "version": "7",
+      "when": 1793188800000,
+      "tag": "0146_client_monthly_payments",
+      "breakpoints": true
     }
   ]
 }
