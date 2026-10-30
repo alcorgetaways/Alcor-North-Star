@@ -13,6 +13,7 @@ import { AlertTriangle, ArrowLeft, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchActiveStaff } from "@/lib/staff";
+import { launchPhasesQuery } from "@/lib/launch-phases";
 import { logLaunchEvent } from "@/lib/team.functions";
 import { useAuth } from "@/hooks/useAuth";
 import { PageHeader } from "@/components/PageHeader";
@@ -101,37 +102,23 @@ function LaunchBoard() {
   const [shiftOpen, setShiftOpen] = useState(false);
   const [planChangeOpen, setPlanChangeOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
-  const [view, setView] = useState<"checklist" | "history">("checklist");
 
   const launch = useQuery({
     queryKey: ["launch", launchId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("client_launches")
-        .select("id, client_id, plan_id, custom_plan_id, status, day0_date, launch_date, exit_date, no_launch_checklist, clients(hotel_name, city), plans(name, duration_weeks, final_gate_code)")
+        .select("id, client_id, plan_id, custom_plan_id, status, day0_date, core_onboarding_due_date, core_onboarding_completed_at, launch_date, exit_date, no_launch_checklist, clients(hotel_name, city), plans(name, duration_weeks, final_gate_code)")
         .eq("id", launchId)
         .maybeSingle();
       if (error) throw error;
       return data as unknown as {
         id: string; client_id: string; plan_id: string; custom_plan_id: string | null; status: string; day0_date: string | null;
         launch_date: string | null; exit_date: string | null; no_launch_checklist: boolean;
+        core_onboarding_due_date: string | null; core_onboarding_completed_at: string | null;
         clients: { hotel_name: string; city: string | null } | null;
         plans: { name: string; duration_weeks: number; final_gate_code: string } | null;
       } | null;
-    },
-  });
-
-  const events = useQuery({
-    queryKey: ["launch-events", launchId],
-    enabled: view === "history",
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("launch_events")
-        .select("id, kind, details, user_id, created_at")
-        .eq("launch_id", launchId)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
     },
   });
 
@@ -159,14 +146,9 @@ function LaunchBoard() {
     },
   });
 
-  const phases = useQuery({
-    queryKey: ["launch-phases"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("launch_phases").select("code, name, sort_order").order("sort_order");
-      if (error) throw error;
-      return data as Array<{ code: string; name: string; sort_order: number }>;
-    },
-  });
+  const phases = useQuery(launchPhasesQuery());
+  // A stale or malformed cached value must never take down the launch page.
+  const phaseRows = Array.isArray(phases.data) ? phases.data : [];
 
   const tasks = useQuery({
     queryKey: ["launch-tasks", launchId],
@@ -269,7 +251,7 @@ function LaunchBoard() {
   // Top grouping P0–P9; rows are (phase, module) pairs so a module whose tasks span
   // two phases (e.g. brand work vs website/CRO) appears under each phase.
   const phaseGroups = useMemo(() => {
-    const order = new Map((phases.data ?? []).map((p) => [p.code, p.sort_order]));
+    const order = new Map(phaseRows.map((p) => [p.code, p.sort_order]));
     const nameOf = (code: string) => modules.data?.find((m) => m.module_code === code)?.launch_modules?.name ?? code;
     const seen = new Map<string, { phase: string; module: string }>();
     for (const t of taskList) {
@@ -286,24 +268,34 @@ function LaunchBoard() {
       else groups.push({ phase: r.phase, rows: [r.module] });
     }
     return groups;
-  }, [taskList, modules.data, phases.data]);
+  }, [taskList, modules.data, phaseRows]);
 
   const l = launch.data;
+  const coreGateSigned = (gates.data ?? []).some((g) => g.gate_code === "gate_a" && g.status === "signed");
+  const coreLive = Boolean(l?.no_launch_checklist || l?.core_onboarding_completed_at || coreGateSigned);
+  const displayStatus = coreLive && l?.status === "active" ? "live" : l?.status;
   const canNotice = (isManager || isBD || isAM) && (l?.status === "active" || l?.status === "live");
   const canClose = (isManager || isBD || isAM) && l?.status === "offboarding";
   const canCancel = (isManager || isBD) && (l?.status === "draft" || l?.status === "awaiting_day0");
   if (launch.isLoading) return <p className="text-sm text-muted-foreground">Loading launch…</p>;
+  if (launch.error) {
+    const errorMessage =
+      typeof launch.error === "object" && launch.error !== null && "message" in launch.error
+        ? String(launch.error.message)
+        : String(launch.error);
+    return <p className="text-sm text-destructive">Could not load launch: {errorMessage}</p>;
+  }
   if (!l) return <p className="text-sm text-muted-foreground">Launch not found, or you don't have access to it.</p>;
   const n = l.plans?.duration_weeks ?? 0;
   const week = launchWeek(l.day0_date, n);
   const phaseLabel = (code: string | null | undefined) => {
-    const p = (phases.data ?? []).find((x) => x.code === code);
+    const p = phaseRows.find((x) => x.code === code);
     return p ? `${p.code} · ${p.name}` : "Core";
   };
   const moduleLabel = (code: string) => modules.data?.find((m) => m.module_code === code)?.launch_modules?.name ?? code;
   const sortedGates = [...(gates.data ?? [])].sort((a, b) =>
-    ((phases.data ?? []).find((p) => p.code === a.phase_code)?.sort_order ?? 99) -
-    ((phases.data ?? []).find((p) => p.code === b.phase_code)?.sort_order ?? 99) || a.due_week - b.due_week);
+    (phaseRows.find((p) => p.code === a.phase_code)?.sort_order ?? 99) -
+    (phaseRows.find((p) => p.code === b.phase_code)?.sort_order ?? 99) || a.due_week - b.due_week);
   const openTask = [...taskList, ...exitTasks].find((t) => t.id === taskId) ?? null;
   const openGate = (gates.data ?? []).find((g) => g.id === gateId) ?? null;
   const keys = [["launch-tasks", launchId], ["launch-gates", launchId]];
@@ -341,7 +333,7 @@ function LaunchBoard() {
             </DropdownMenuContent></DropdownMenu> : null}
             {isManager ? <HoldLaunchButton launchId={l.id} status={l.status} /> : null}
             {isAdmin ? <ExitTemplateEditor planId={l.plan_id} customId={l.custom_plan_id} /> : null}
-            <StatusBadge status={l.no_launch_checklist ? "live" : l.status} label={l.no_launch_checklist ? "Live" : LAUNCH_STATUS_LABEL[l.status] ?? l.status} />
+            <StatusBadge status={displayStatus ?? l.status} label={displayStatus === "live" && l.status === "active" ? "Live" : LAUNCH_STATUS_LABEL[displayStatus ?? l.status] ?? l.status} />
           </div>
         }
       />
@@ -371,15 +363,17 @@ function LaunchBoard() {
         </div>
       ) : null}
 
-      <KpiStrip>
-        <KpiCard label="Day 0" value={fmtDate(l.day0_date)} />
-        <KpiCard label="Progress" value={(historicalTasks.data ?? []).length ? "Completed before North Star" : week === null ? "Not started" : `Roadmap week ${week} of ${n}`} />
-        <KpiCard label="Go-live" value={fmtDate(l.launch_date)} />
-        <div className="card-surface p-5">
-          <p className="text-label-muted">Onboarding tasks done</p>
-          <div className="mt-3"><ProgressRing size="medium" value={done} goal={taskList.length} label="Tasks done" caption={`${done}/${taskList.length} tasks`} /></div>
+      <KpiStrip className="gap-3 lg:grid-cols-5">
+        <KpiCard compact label="Day 0" value={fmtDate(l.day0_date)} />
+        <KpiCard compact label="Core onboarding" value={coreLive ? "Live" : `Due ${fmtDate(l.core_onboarding_due_date)}`} />
+        <KpiCard compact label="Progress" value={(historicalTasks.data ?? []).length ? "Completed before North Star" : week === null ? "Not started" : `Roadmap week ${week} of ${n}`} />
+        <KpiCard compact label="Go-live" value={fmtDate(l.launch_date)} />
+        <div className="card-surface flex items-center justify-between gap-2 p-4">
+          <div className="min-w-0"><p className="text-xs text-label-muted">Onboarding tasks done</p><p className="mt-1 text-sm font-medium tabular-nums">{done} / {taskList.length} tasks</p></div>
+          <ProgressRing size="medium" value={done} goal={taskList.length} label="Tasks done" />
         </div>
       </KpiStrip>
+      {coreLive && l.status === "active" ? <p className="text-sm text-muted-foreground">Core onboarding is complete. Assigned pipelines continue through their roadmap gates.</p> : null}
 
       <section className="space-y-2">
         <h2 className="text-section-title font-semibold">Gates</h2>
@@ -399,50 +393,14 @@ function LaunchBoard() {
 
       <section className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-3">
-            <h2 className="text-section-title font-semibold">{view === "checklist" ? "Onboarding Task List" : "History"}</h2>
-            <div className="flex gap-1">
-              {([["checklist", "Checklist"], ["history", "History"]] as const).map(([k, lab]) => (
-                <button
-                  key={k}
-                  onClick={() => setView(k)}
-                  className={cn(
-                    "rounded-full border px-3 py-1 text-label font-medium transition-colors",
-                    view === k ? "border-primary bg-primary/10 text-primary" : "border-border/70 text-muted-foreground hover:bg-muted/50",
-                  )}
-                >
-                  {lab}
-                </button>
-              ))}
-            </div>
-          </div>
-          {view === "checklist" ? (
-            <div className="flex flex-wrap gap-1.5 text-label">
-              {Object.keys(TASK_CHIP).map((s) => (
-                <span key={s} className={cn("rounded border px-1.5 py-0.5", TASK_CHIP[s])}>{TASK_STATUS_LABEL[s]}</span>
-              ))}
-            </div>
-          ) : null}
-        </div>
-        {view === "history" ? (
-          <div className="card-surface overflow-hidden text-sm">
-            {events.isLoading ? <p className="px-4 py-3 text-muted-foreground">Loading…</p> : null}
-            {!events.isLoading && !(events.data ?? []).length ? (
-              <p className="px-4 py-3 text-muted-foreground">Nothing logged yet.</p>
-            ) : null}
-            {(events.data ?? []).map((ev) => (
-              <div key={ev.id} className="border-t border-border/70 px-4 py-2.5 first:border-t-0">
-                <p>
-                  <span className="font-medium capitalize">{eventLabel(ev.kind)}</span>
-                  {eventDetails(ev.details) ? <span className="text-muted-foreground"> — {eventDetails(ev.details)}</span> : null}
-                </p>
-                <p className="text-label text-muted-foreground">
-                  {(staff.data ?? []).find((s) => s.id === ev.user_id)?.full_name ?? "System"} · {fmtDateTime(ev.created_at)}
-                </p>
-              </div>
+          <h2 className="text-section-title font-semibold">Onboarding Task List</h2>
+          <div className="flex flex-wrap gap-1.5 text-label">
+            {Object.keys(TASK_CHIP).map((s) => (
+              <span key={s} className={cn("rounded border px-1.5 py-0.5", TASK_CHIP[s])}>{TASK_STATUS_LABEL[s]}</span>
             ))}
           </div>
-        ) : settingUp ? (
+        </div>
+        {settingUp ? (
           <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
             This launch is still being set up — finish the wizard to create its tasks and gates.
           </div>
@@ -931,14 +889,3 @@ function ChangePlanDialog({ launch, open, onClose, plans }: {
   );
 }
 
-function eventLabel(kind: string): string {
-  return kind.replace(/_/g, " ");
-}
-
-function eventDetails(d: unknown): string {
-  if (!d || typeof d !== "object") return "";
-  const entries = Object.entries(d as Record<string, unknown>).filter(
-    ([, v]) => v !== null && v !== undefined && v !== "",
-  );
-  return entries.map(([k, v]) => `${k.replace(/_/g, " ")}: ${String(v)}`).join(" · ");
-}

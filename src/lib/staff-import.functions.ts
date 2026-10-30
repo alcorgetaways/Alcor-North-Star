@@ -115,8 +115,8 @@ const MEMBERSHIPS: Array<{ pipeline: string; head: string[]; team: string[] }> =
   { pipeline: "whatsapp", head: ["hotelsalesmastery@gmail.com"], team: [] },
   {
     pipeline: "marketing_funnel",
-    head: ["alcorgetaways@gmail.com"],
-    team: ["hotelsalesmastery@gmail.com"],
+    head: ["hotelsalesmastery@gmail.com"],
+    team: ["alcorgetaways@gmail.com"],
   },
   { pipeline: "ota", head: ["shalini@alcorgetaways.com"], team: [] },
   {
@@ -124,7 +124,11 @@ const MEMBERSHIPS: Array<{ pipeline: string; head: string[]; team: string[] }> =
     head: ["alcor@group2001.in"],
     team: ["alcorgetaways.leadforms@gmail.com", "alcorsparesort@gmail.com"],
   },
-  { pipeline: "business_development", head: ["shalini@alcorgetaways.com"], team: [] },
+  {
+    pipeline: "business_development",
+    head: ["tonny.sapra@group2001.in"],
+    team: ["shalini@alcorgetaways.com"],
+  },
   {
     pipeline: "reservations_desk",
     head: ["mohnish@group2001.in"],

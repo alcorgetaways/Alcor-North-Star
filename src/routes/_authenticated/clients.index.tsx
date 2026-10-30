@@ -60,13 +60,13 @@ function ClientsPage() {
   const { data: missing = [] } = useTargetsMissing(isManager);
   const missingBy = new Map(missing.map((m) => [m.clientId, m.count]));
 
-  const { data = [], isLoading } = useQuery({
+  const { data = [], isLoading, error, refetch } = useQuery({
     queryKey: ["clients"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("clients")
         .select(
-          "id, client_code, hotel_name, property_type, city, state, status, payment_status, is_test, client_launches(id, status, no_launch_checklist, created_at, plans(name))",
+          "id, client_code, hotel_name, property_type, city, state, status, payment_status, is_test, client_launches(id, status, no_launch_checklist, core_onboarding_completed_at, created_at, plans(name, sort_order), custom_plans(name), client_gates(gate_code, status))",
         )
         .order("hotel_name")
         .limit(1000);
@@ -81,10 +81,13 @@ function ClientsPage() {
         status: string;
         payment_status: string;
         is_test: boolean;
-        client_launches: Array<{ id: string; status: string; no_launch_checklist: boolean; created_at: string; plans: { name: string } | null }>;
+        client_launches: Array<{ id: string; status: string; no_launch_checklist: boolean; core_onboarding_completed_at: string | null; created_at: string; plans: { name: string; sort_order: number } | null; custom_plans: { name: string } | null; client_gates: Array<{ gate_code: string; status: string }> }>;
       }>;
     },
   });
+
+  const latestLaunch = (c: (typeof data)[number]) =>
+    [...c.client_launches].sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0];
 
   const filtered = data
     // Test clients stay out of every list except the explicit "All clients" view.
@@ -97,14 +100,12 @@ function ClientsPage() {
       // All clients hides hotels whose every launch is closed; they live under Closed.
       if (statusFilter === "all")
         return c.client_launches.length === 0 || c.client_launches.some((l) => l.status !== "closed");
-      if (statusFilter === "none") return c.client_launches.length === 0;
+      const latest = latestLaunch(c);
+      if (statusFilter === "none") return !latest;
       if (statusFilter === "active")
-        return c.client_launches.some((l) => (ACTIVE_LAUNCH_STATUSES as readonly string[]).includes(l.status));
-      return c.client_launches.some((l) => l.status === statusFilter);
+        return !!latest && (ACTIVE_LAUNCH_STATUSES as readonly string[]).includes(latest.status);
+      return latest?.status === statusFilter;
     });
-
-  const latestLaunch = (c: (typeof data)[number]) =>
-    [...c.client_launches].sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0];
 
   return (
     <div className="space-y-6">
@@ -153,11 +154,18 @@ function ClientsPage() {
         </Select>
       </div>
 
+      {error ? (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm">
+          <p className="text-destructive">Could not load clients: {error.message}</p>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>Retry</Button>
+        </div>
+      ) : null}
+
       <DataTable
         rows={filtered}
         rowKey={(c) => c.id}
         loading={isLoading}
-        emptyMessage="No clients yet. Start by onboarding your first hotel."
+        emptyMessage={error ? "The client request failed; see the error above." : "No clients yet. Start by onboarding your first hotel."}
         columns={[
           {
             key: "hotel",
@@ -200,7 +208,7 @@ function ClientsPage() {
             headerClassName: "hidden md:table-cell",
             className: "hidden md:table-cell",
             render: (c) =>
-              latestLaunch(c)?.plans?.name ?? <span className="text-muted-foreground">—</span>,
+              latestLaunch(c)?.custom_plans?.name ?? latestLaunch(c)?.plans?.name ?? <span className="text-muted-foreground">—</span>,
           },
           {
             key: "launch",
@@ -208,8 +216,9 @@ function ClientsPage() {
             render: (c) => {
               const l = latestLaunch(c);
               if (!l) return <span className="text-muted-foreground">No launch</span>;
-              const status = l.no_launch_checklist && l.status === "active" ? "live" : l.status;
-              return <StatusBadge status={status} label={LAUNCH_STATUS_LABEL[status] ?? status} />;
+              const coreLive = l.no_launch_checklist || l.core_onboarding_completed_at != null || l.client_gates.some((g) => g.gate_code === "gate_a" && g.status === "signed");
+              const status = coreLive && l.status === "active" ? "live" : l.status;
+              return <StatusBadge status={status} label={status === "live" && l.status === "active" ? "Live" : LAUNCH_STATUS_LABEL[status] ?? status} />;
             },
           },
           {
@@ -221,6 +230,7 @@ function ClientsPage() {
           },
         ]}
       />
+
     </div>
   );
 }

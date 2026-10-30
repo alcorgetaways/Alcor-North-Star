@@ -30,11 +30,13 @@ type Overview = {
   status: string;
   day0_date: string | null;
   launch_date: string | null;
+  no_launch_checklist: boolean;
+  core_onboarding_completed_at: string | null;
   exit_date: string | null;
   notice_date: string | null;
   clients: { hotel_name: string } | null;
   plans: { name: string; duration_weeks: number } | null;
-  client_gates: Array<{ id: string; gate_name: string; due_date: string; status: string }>;
+  client_gates: Array<{ id: string; gate_code: string; gate_name: string; due_date: string; status: string }>;
   client_tasks: Array<{ id: string; status: string; due_date: string; phase: string }>;
 };
 
@@ -45,7 +47,7 @@ function LaunchOverview() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("client_launches")
-        .select("id, status, day0_date, launch_date, exit_date, notice_date, clients(hotel_name), plans(name, duration_weeks), client_gates(id, gate_name, due_date, status), client_tasks(id, status, due_date, phase)").not("client_id", "in", demoIn())
+        .select("id, status, day0_date, launch_date, exit_date, notice_date, no_launch_checklist, core_onboarding_completed_at, clients(hotel_name), plans(name, duration_weeks), client_gates(id, gate_code, gate_name, due_date, status), client_tasks(id, status, due_date, phase)").not("client_id", "in", demoIn())
         .in("status", ["draft", "awaiting_day0", "active", "live", "offboarding"])
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -62,7 +64,8 @@ function LaunchOverview() {
         const overdue = onboarding.filter((t) => isOverdue({ due_date: t.due_date, status: t.status } as never)).length;
         const waiting = onboarding.filter((t) => t.status === "waiting_client").length;
         const exitOpen = l.client_tasks.filter((t) => t.phase === "offboarding" && t.status !== "done" && t.status !== "not_applicable").length;
-        return { ...l, n, nextGate, overdue, waiting, exitOpen, week: launchWeek(l.day0_date, n) };
+        const coreLive = l.no_launch_checklist || l.core_onboarding_completed_at != null || l.client_gates.some((g) => g.gate_code === "gate_a" && g.status === "signed");
+        return { ...l, n, nextGate, overdue, waiting, exitOpen, coreLive, week: launchWeek(l.day0_date, n) };
       })
       .sort((a, b) => b.overdue - a.overdue);
   }, [launches.data]);
@@ -70,8 +73,8 @@ function LaunchOverview() {
   const [tab, setTab] = useState<"setting_up" | "running" | "live" | "exiting">("running");
   const visible = rows.filter((r) =>
     tab === "setting_up" ? r.status === "draft" || r.status === "awaiting_day0"
-      : tab === "running" ? r.status === "active"
-        : tab === "live" ? r.status === "live"
+      : tab === "running" ? r.status === "active" && !r.coreLive
+        : tab === "live" ? r.status !== "offboarding" && (r.coreLive || r.status === "live")
           : r.status === "offboarding",
   );
 
@@ -91,8 +94,8 @@ function LaunchOverview() {
             onChange={(v) => setTab(v as typeof tab)}
             items={[
               { value: "setting_up", label: "Setting up", count: rows.filter((r) => r.status === "draft" || r.status === "awaiting_day0").length },
-              { value: "running", label: "Running", count: rows.filter((r) => r.status === "active").length },
-              { value: "live", label: "Live", count: rows.filter((r) => r.status === "live").length },
+              { value: "running", label: "Running", count: rows.filter((r) => r.status === "active" && !r.coreLive).length },
+              { value: "live", label: "Live", count: rows.filter((r) => r.status !== "offboarding" && (r.coreLive || r.status === "live")).length },
               { value: "exiting", label: "Exiting", count: rows.filter((r) => r.status === "offboarding").length },
             ]}
           />
@@ -103,7 +106,7 @@ function LaunchOverview() {
           {
             key: "status",
             header: "Status",
-            render: (r) => <StatusBadge status={r.status} label={LAUNCH_STATUS_LABEL[r.status] ?? r.status} />,
+            render: (r) => <StatusBadge status={r.coreLive && r.status === "active" ? "live" : r.status} label={r.coreLive && r.status === "active" ? "Live" : LAUNCH_STATUS_LABEL[r.status] ?? r.status} />,
           },
           { key: "week", header: "Week", render: (r) => (r.week === null ? "—" : <ProgressRing size="small" value={r.week} goal={r.n} label={`Week ${r.week} of ${r.n}`} caption={`${r.week} / ${r.n}`} />) },
           {
@@ -120,7 +123,7 @@ function LaunchOverview() {
           { key: "waiting", header: "Waiting on client", align: "right", render: (r) => r.waiting },
           {
             key: "date",
-            header: "Go-live / Exit",
+            header: "Roadmap go-live / Exit",
             render: (r) =>
               r.status === "offboarding"
                 ? `${fmtDate(r.exit_date)}${r.exitOpen ? ` · ${r.exitOpen} open` : ""}`

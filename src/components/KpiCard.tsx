@@ -13,6 +13,7 @@ export function KpiCard({
   delta,
   icon: Icon,
   tone = "default",
+  compact = false,
 }: {
   label: string;
   value: string | number;
@@ -20,6 +21,7 @@ export function KpiCard({
   delta?: { direction: "up" | "down"; text: string };
   icon?: LucideIcon;
   tone?: "default" | "gold" | "success" | "warning" | "danger";
+  compact?: boolean;
 }) {
   const toneClass = {
     default: "text-foreground",
@@ -30,13 +32,13 @@ export function KpiCard({
   }[tone];
 
   return (
-    <div className="card-surface p-5">
+    <div className={cn("card-surface", compact ? "p-4" : "p-5")}>
       <div className="flex items-start justify-between gap-3">
-        <p className="text-label-muted">{label}</p>
+        <p className={cn("text-label-muted", compact && "text-xs")}>{label}</p>
         {Icon ? <Icon className={cn("h-4 w-4 shrink-0 opacity-60", toneClass)} strokeWidth={1.75} /> : null}
       </div>
-      <div className="mt-3 flex items-baseline gap-2">
-        <p className={cn("text-[1.75rem] font-semibold tabular-nums leading-tight break-words", toneClass)}>{value}</p>
+      <div className={cn("flex items-baseline gap-2", compact ? "mt-2" : "mt-3")}>
+        <p className={cn("font-semibold tabular-nums leading-tight break-words", compact ? "text-xl" : "text-[1.75rem]", toneClass)}>{value}</p>
         {delta ? (
           <span
             className={cn(
@@ -49,7 +51,7 @@ export function KpiCard({
           </span>
         ) : null}
       </div>
-      {hint ? <p className="mt-2 text-label text-muted-foreground">{hint}</p> : null}
+      {hint ? <p className={cn("text-label text-muted-foreground", compact ? "mt-1" : "mt-2")}>{hint}</p> : null}
     </div>
   );
 }

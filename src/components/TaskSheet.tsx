@@ -133,10 +133,19 @@ export function TaskSheet({
         ? { assignee_id: form.assignee_id || null, backup_id: form.backup_id || null, due_date: form.due_date }
         : {}),
     };
-    const { error } = await supabase.from("client_tasks").update(patch).eq("id", task.id);
+    const { data: updated, error } = await supabase
+      .from("client_tasks")
+      .update(patch)
+      .eq("id", task.id)
+      .select("id, status")
+      .maybeSingle();
     setSaving(false);
     if (error) {
       toast.error(error.message);
+      return;
+    }
+    if (!updated || updated.status !== form.status) {
+      toast.error("The task update was not confirmed. Check your access, then refresh and try again.");
       return;
     }
     toast.success(`${task.code} saved`);

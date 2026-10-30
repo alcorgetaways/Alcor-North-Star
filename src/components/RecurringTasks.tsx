@@ -15,6 +15,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 
 export function RecurringTasks({ tasks }: { tasks: RecurringTask[] }) {
   const mutation = useActivityMutation();
+  const [period, setPeriod] = useState<"daily" | "weekly" | "monthly">("monthly");
   const [review, setReview] = useState<RecurringTask | null>(null);
   const [reason, setReason] = useState("");
   const [date, setDate] = useState("");
@@ -69,11 +70,44 @@ export function RecurringTasks({ tasks }: { tasks: RecurringTask[] }) {
     act(progress.task, progress.status, progress.status === "blocked" ? { reason: text } : { evidence: text });
   };
 
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const weekStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  const dueInPeriod = tasks.filter((task) => {
+    if (period === "monthly") return true;
+    if (period === "daily") return task.due_date === todayKey;
+    const due = new Date(`${task.due_date}T00:00:00`);
+    return due >= weekStart && due <= weekEnd;
+  });
+  const periodLabel = period === "daily" ? "today" : period === "weekly" ? "this week" : "this month";
+
   return (
     <section className="space-y-4">
-      <h3 className="text-section-title font-semibold">Recurring activity tasks</h3>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-section-title font-semibold">Recurring activity tasks</h3>
+          <p className="text-label text-muted-foreground">Showing tasks due {periodLabel}.</p>
+        </div>
+        <div role="group" aria-label="Recurring task due period" className="inline-flex rounded-lg border border-border bg-card p-1">
+          {([ ["daily", "Daily"], ["weekly", "Weekly"], ["monthly", "Monthly"] ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={period === value}
+              onClick={() => setPeriod(value)}
+              className={`rounded-md px-3 py-1.5 text-label font-medium transition-colors ${period === value ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
       <DataTable
-        rows={tasks}
+        rows={dueInPeriod}
+        emptyMessage={`No recurring tasks due ${periodLabel}.`}
         rowKey={(t) => t.id}
         columns={[
           {

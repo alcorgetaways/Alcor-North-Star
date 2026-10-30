@@ -6,6 +6,15 @@ const MAX_ATTEMPTS = 3;
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
+async function fileBase64(file: Blob) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary);
+}
+
 /**
  * Outbox worker — called by pg_cron every 5 minutes with header
  * `x-cron-secret` (value lives in public.cron_secrets, service-role only).
@@ -62,9 +71,10 @@ export const Route = createFileRoute("/api/public/hooks/outbox-sender")({
           if (r === "sent") loginSent += 1;
         }
 
-        const { data: rows, error } = await supabaseAdmin
+        const outboxAdmin = supabaseAdmin as any;
+        const { data: rows, error } = await outboxAdmin
           .from("client_message_outbox")
-          .select("id, to_address, cc_addresses, subject, body, attempts")
+          .select("id, to_address, cc_addresses, subject, body, attempts, invoice_path, invoice_name, payment_email_draft_id")
           .eq("channel", "email")
           // Operational copies and owner reports stay held until their switch is on.
           .or(`held.eq.false,kind.in.(approval_blocker_reminder,activation_request${ownerEmailsEnabled ? ",owner_monthly_report" : ""})`)
@@ -94,16 +104,34 @@ export const Route = createFileRoute("/api/public/hooks/outbox-sender")({
         let pending = 0;
         for (const r of rows ?? []) {
           try {
+            const attachments: Array<{ filename: string; mimeType: string; contentBase64: string }> = [];
+            if (r.invoice_path) {
+              const { data: invoice, error: invoiceError } = await supabaseAdmin.storage
+                .from("client-files")
+                .download(r.invoice_path);
+              if (invoiceError || !invoice) throw new Error(invoiceError?.message ?? "Invoice attachment could not be loaded");
+              attachments.push({
+                filename: r.invoice_name ?? "invoice.pdf",
+                mimeType: "application/pdf",
+                contentBase64: await fileBase64(invoice),
+              });
+            }
             await sendEmail({
               to: r.to_address ?? "",
               cc: r.cc_addresses,
               subject: r.subject ?? "Alcor North Star",
               body: r.body ?? "",
+              ...(attachments.length ? { attachments } : {}),
             });
-            await supabaseAdmin
+            await outboxAdmin
               .from("client_message_outbox")
               .update({ sent_at: new Date().toISOString(), error: null })
               .eq("id", r.id);
+            if (r.payment_email_draft_id) {
+              await outboxAdmin.from("client_payment_email_drafts")
+                .update({ status: "sent", sent_at: new Date().toISOString() })
+                .eq("id", r.payment_email_draft_id);
+            }
             sent += 1;
           } catch (e) {
             if (e instanceof EmailNotConfiguredError) {
@@ -112,7 +140,7 @@ export const Route = createFileRoute("/api/public/hooks/outbox-sender")({
               break;
             }
             const attempts = (r.attempts ?? 0) + 1;
-            await supabaseAdmin
+            await outboxAdmin
               .from("client_message_outbox")
               .update({
                 attempts,
@@ -120,6 +148,11 @@ export const Route = createFileRoute("/api/public/hooks/outbox-sender")({
                 failed_at: attempts >= MAX_ATTEMPTS ? new Date().toISOString() : null,
               })
               .eq("id", r.id);
+            if (r.payment_email_draft_id && attempts >= MAX_ATTEMPTS) {
+              await outboxAdmin.from("client_payment_email_drafts")
+                .update({ status: "failed" })
+                .eq("id", r.payment_email_draft_id);
+            }
             failed += 1;
           }
         }

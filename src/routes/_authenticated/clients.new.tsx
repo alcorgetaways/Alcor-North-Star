@@ -2,7 +2,7 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronLeft, ChevronRight, Loader2, Upload } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Loader2, Plus, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { ensureClientLogin } from "@/lib/team.functions";
@@ -18,6 +18,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -75,10 +76,75 @@ type Plan = {
   quarterly_fee_inr: number | null;
   billing_period: string | null;
   duration_weeks: number | null;
+  sort_order?: number;
   day0_requires_noc: boolean;
   launch_day: number | null;
   plan_modules: Array<{ module_code: string; window_label: string | null; launch_modules: { name: string; owner_role: string; client_side: boolean } | null }>;
 };
+
+type CustomPlanServiceDraft = {
+  service_name: string;
+  scope: string;
+  frequency: string;
+  pipeline_code: string;
+  included: boolean;
+  fromBase: boolean;
+};
+
+type CustomPlanDraft = {
+  name: string;
+  base_plan_version_id: string;
+  monthly_retainer_inr: string;
+  commission_direct_pct: string;
+  commission_ota_pct: string;
+  commission_weddings_pct: string;
+  commission_other_pct: string;
+  setup_fee_inr: string;
+  addon_ids: string[];
+  contract_start: string;
+  contract_end: string;
+  payment_cycle: string;
+  notice_days: string;
+  termination_terms: string;
+  services: CustomPlanServiceDraft[];
+};
+
+const COMMISSION_FIELDS = [
+  { key: "commission_direct_pct", label: "Direct" },
+  { key: "commission_ota_pct", label: "OTA" },
+  { key: "commission_weddings_pct", label: "Weddings / events" },
+  { key: "commission_other_pct", label: "Other" },
+] as const;
+
+// Fixed North Star launch allocation. Several module codes belong to the same
+// roadmap workstream (for example, the GMB photos/reviews modules).
+const FIXED_MODULE_ASSIGNMENTS: Record<string, { primary: string; backup: string }> = {
+  INF: { primary: "Nisha", backup: "Anju" },
+  TA: { primary: "Ronak", backup: "Mayank" },
+  GAD: { primary: "Mohnish", backup: "Mayank" },
+  PM: { primary: "Mohnish", backup: "Arvind" },
+  VRD: { primary: "Mohnish", backup: "Shalini" },
+  WA: { primary: "Ronak", backup: "Mohnish" },
+  FUN: { primary: "Ronak", backup: "Mohnish" },
+  BRD: { primary: "Mayank", backup: "Mohnish" },
+  SMM: { primary: "Dinesh", backup: "Ashish" },
+  GMB: { primary: "Anju", backup: "Nisha" },
+  CRE: { primary: "Anju", backup: "Nisha" },
+  ORM: { primary: "Anju", backup: "Nisha" },
+  OTA: { primary: "Shalini", backup: "Mohnish" },
+  RES: { primary: "Mohnish", backup: "Shalini" },
+  RV: { primary: "Mohnish", backup: "" },
+  BD: { primary: "Shalini", backup: "Amit" },
+  FIN: { primary: "Shalini", backup: "Amit" },
+  AM: { primary: "Shalini", backup: "Mayank" },
+};
+
+function staffNameKey(name: string) {
+  const first = name.trim().split(/\s+/)[0]?.toLowerCase().replace(/[^a-z]/g, "") ?? "";
+  if (first === "aashish") return "ashish";
+  if (first === "monish") return "mohnish";
+  return first;
+}
 
 
 function inr(v: number | null | undefined) {
@@ -94,10 +160,21 @@ function NewClient() {
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [day0Choice, setDay0Choice] = useState(todayIST());
-  const [picked, setPicked] = useState({ agm: false, noc: false, pay: false });
+  const [picked, setPicked] = useState({ agm: false, noc: false });
   const originalPlanId = useRef<string | null>(null);
+  const originalCustomPlanId = useRef<string | null>(null);
   const [planChangeOpen, setPlanChangeOpen] = useState(false);
   const [planChangeReason, setPlanChangeReason] = useState("");
+  const [customPlanDialogOpen, setCustomPlanDialogOpen] = useState(false);
+  const [customPlanDraft, setCustomPlanDraft] = useState<CustomPlanDraft | null>(null);
+  const [customPlanCreated, setCustomPlanCreated] = useState<{
+    id: string;
+    name: string;
+    monthly_retainer_inr: number | null;
+    setup_fee_inr: number | null;
+    payment_cycle: string;
+    approval_status: string;
+  } | null>(null);
   const warnCutoff = new Date(Date.now() + 5.5 * 3600 * 1000 - 7 * 86400000).toISOString().slice(0, 10);
 
   const [basics, setBasics] = useState({
@@ -135,6 +212,7 @@ function NewClient() {
   const [launch, setLaunch] = useState<{
     id: string | null;
     plan_id: string | null;
+    custom_plan_id: string | null;
     addons: string[];
     crm_option: string;
     meta_budget_daily: string;
@@ -149,6 +227,7 @@ function NewClient() {
   }>({
     id: null,
     plan_id: null,
+    custom_plan_id: null,
     addons: [],
     crm_option: "",
     meta_budget_daily: "",
@@ -180,6 +259,172 @@ function NewClient() {
       return data as unknown as Plan[];
     },
   });
+
+  const planVersions = useQuery({
+    queryKey: ["onboarding-plan-versions"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from("plan_versions")
+        .select("id, plan_id, name, version, status, monthly_retainer_inr, notice_days, plan_services(service_name, scope, frequency, pipeline_code, included, sort_order)")
+        .eq("status", "active")
+        .order("version", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as Array<{
+        id: string;
+        plan_id: string;
+        name: string;
+        version: number;
+        monthly_retainer_inr: number;
+        notice_days: number;
+        plan_services: Array<CustomPlanServiceDraft & { sort_order: number }>;
+      }>;
+    },
+  });
+
+  const addons = useQuery({
+    queryKey: ["onboarding-addons-catalogue"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from("addons_catalogue").select("id, name, price_inr, price_type").eq("active", true).order("sort_order");
+      if (error) throw error;
+      return (data ?? []) as Array<{ id: string; name: string; price_inr: number | null; price_type: string }>;
+    },
+  });
+
+  const existingCustomPlan = useQuery({
+    queryKey: ["onboarding-selected-custom-plan", launch.custom_plan_id],
+    enabled: !!launch.custom_plan_id,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from("custom_plans")
+        .select("id, name, monthly_retainer_inr, setup_fee_inr, payment_cycle, approval_status")
+        .eq("id", launch.custom_plan_id)
+        .single();
+      if (error) throw error;
+      return data as { id: string; name: string; monthly_retainer_inr: number | null; setup_fee_inr: number | null; payment_cycle: string; approval_status: string };
+    },
+  });
+
+  const customPlanForLaunch = customPlanCreated?.id === launch.custom_plan_id ? customPlanCreated : null;
+
+  function servicesForVersion(versionId: string): CustomPlanServiceDraft[] {
+    const version = planVersions.data?.find((item) => item.id === versionId);
+    return [...(version?.plan_services ?? [])]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((service) => ({
+        service_name: service.service_name,
+        scope: service.scope ?? "",
+        frequency: service.frequency ?? "",
+        pipeline_code: service.pipeline_code ?? "",
+        included: true,
+        fromBase: true,
+      }));
+  }
+
+  function openCustomPlanBuilder() {
+    const versions = planVersions.data ?? [];
+    const base = versions.find((item) => plan.data?.some((candidate) => candidate.id === item.plan_id && candidate.code === "gmb_seo")) ?? versions[0];
+    if (!base) {
+      toast.error("No active base plan is available for a custom plan.");
+      return;
+    }
+    setCustomPlanDraft({
+      name: basics.hotel_name.trim() ? `${basics.hotel_name.trim()} — Custom Plan` : "",
+      base_plan_version_id: base.id,
+      monthly_retainer_inr: String(base.monthly_retainer_inr),
+      commission_direct_pct: "",
+      commission_ota_pct: "",
+      commission_weddings_pct: "",
+      commission_other_pct: "0",
+      setup_fee_inr: "",
+      addon_ids: [],
+      contract_start: "",
+      contract_end: "",
+      payment_cycle: "monthly",
+      notice_days: String(base.notice_days),
+      termination_terms: "",
+      services: servicesForVersion(base.id),
+    });
+    setCustomPlanDialogOpen(true);
+  }
+
+  function changeCustomPlanBase(versionId: string) {
+    if (!customPlanDraft) return;
+    const base = planVersions.data?.find((item) => item.id === versionId);
+    setCustomPlanDraft({
+      ...customPlanDraft,
+      base_plan_version_id: versionId,
+      monthly_retainer_inr: base ? String(base.monthly_retainer_inr) : customPlanDraft.monthly_retainer_inr,
+      notice_days: base ? String(base.notice_days) : customPlanDraft.notice_days,
+      services: servicesForVersion(versionId),
+    });
+  }
+
+  async function saveNewCustomPlan() {
+    const draft = customPlanDraft;
+    if (!draft || !draft.name.trim()) {
+      toast.error("Enter a name for the custom plan.");
+      return;
+    }
+    const baseVersion = planVersions.data?.find((item) => item.id === draft.base_plan_version_id);
+    const basePlan = baseVersion ? plan.data?.find((item) => item.id === baseVersion.plan_id) : null;
+    if (!baseVersion || !basePlan) {
+      toast.error("The selected base plan is not available. Choose another base plan.");
+      return;
+    }
+    const serviceRows = draft.services.filter((service) => service.service_name.trim());
+    if (serviceRows.length !== draft.services.length) {
+      toast.error("Every added service needs a service name.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const num = (value: string) => value.trim() === "" ? null : Number(value);
+      const { data: created, error } = await (supabase as any).from("custom_plans").insert({
+        base_plan_version_id: draft.base_plan_version_id,
+        name: draft.name.trim(),
+        created_by: user?.id ?? null,
+        monthly_retainer_inr: num(draft.monthly_retainer_inr),
+        commission_direct_pct: num(draft.commission_direct_pct),
+        commission_ota_pct: num(draft.commission_ota_pct),
+        commission_weddings_pct: num(draft.commission_weddings_pct),
+        commission_other_pct: Number(draft.commission_other_pct || 0),
+        setup_fee_inr: num(draft.setup_fee_inr),
+        addon_ids: draft.addon_ids,
+        contract_start: draft.contract_start || null,
+        contract_end: draft.contract_end || null,
+        payment_cycle: draft.payment_cycle,
+        notice_days: num(draft.notice_days),
+        termination_terms: draft.termination_terms.trim() || null,
+      }).select("id, approval_status, name, monthly_retainer_inr, setup_fee_inr, payment_cycle").single();
+      if (error) throw error;
+      if (serviceRows.length) {
+        const { error: servicesError } = await (supabase as any).from("custom_plan_services").insert(serviceRows.map((service, index) => ({
+          custom_plan_id: created.id,
+          service_name: service.service_name.trim(),
+          scope: service.scope.trim() || null,
+          frequency: service.frequency.trim() || null,
+          pipeline_code: service.pipeline_code.trim() || null,
+          included: service.included,
+          sort_order: index,
+        })));
+        if (servicesError) throw servicesError;
+      }
+      const { data: finalPlan, error: finalPlanError } = await (supabase as any).from("custom_plans")
+        .select("id, approval_status, name, monthly_retainer_inr, setup_fee_inr, payment_cycle")
+        .eq("id", created.id)
+        .single();
+      if (finalPlanError) throw finalPlanError;
+
+      setLaunch((current) => ({ ...current, plan_id: basePlan.id, custom_plan_id: created.id, addons: [] }));
+      setCustomPlanCreated(finalPlan);
+      setCustomPlanDialogOpen(false);
+      setCustomPlanDraft(null);
+      void qc.invalidateQueries({ queryKey: ["custom-plans"] });
+      toast.success(finalPlan.approval_status === "approved" ? "Custom plan created and approved." : "Custom plan created. Management approval is required before activation.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not create the custom plan.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const staff = useQuery({
     queryKey: ["launch-staff"],
@@ -215,7 +460,7 @@ function NewClient() {
       // Commercial columns (advance, payment ref, screenshot) are column-locked in the DB;
       // they come through the launch_commercials RPC below, not the table select.
       const LAUNCH_BASE_COLS =
-        "id, client_id, plan_id, addons, crm_option, meta_budget_daily, google_budget_daily, advance_received_at, status, day0_date, launch_date";
+        "id, client_id, plan_id, custom_plan_id, addons, crm_option, meta_budget_daily, google_budget_daily, advance_received_at, status, day0_date, launch_date";
       const [{ data: c, error: cErr }, { data: ls, error: lErr }] = await Promise.all([
         supabase.from("clients").select("*").eq("id", clientId).maybeSingle(),
         launchIdParam
@@ -261,10 +506,12 @@ function NewClient() {
           payment_screenshot_path?: string | null;
         };
         originalPlanId.current = l.plan_id;
+        originalCustomPlanId.current = l.custom_plan_id ?? null;
         setLaunch((prev) => ({
           ...prev,
           id: l.id,
           plan_id: l.plan_id,
+          custom_plan_id: l.custom_plan_id ?? null,
           addons: (l.addons as string[] | null) ?? [],
           crm_option: l.crm_option ?? "",
           meta_budget_daily: l.meta_budget_daily ? String(l.meta_budget_daily) : "",
@@ -301,15 +548,40 @@ function NewClient() {
   }, [clientId, launchIdParam, loaded]);
 
   const selectedPlan = plan.data?.find((p) => p.id === launch.plan_id) ?? null;
+  const selectedCustomPlan = customPlanForLaunch;
   const modules = selectedPlan?.plan_modules ?? [];
   const isDiamond = selectedPlan?.code.startsWith("diamond_") ?? false;
   const isScale = selectedPlan?.code === "diamond_scale";
   const hideGoogle = selectedPlan?.code === "diamond_start";
   const needsNoc = selectedPlan?.day0_requires_noc ?? false;
 
+  // Resolve the permanent roster names to active staff IDs used by the DB.
+  // On a resumed draft, this replaces any earlier manual module allocation.
+  useEffect(() => {
+    if (!modules.length || !staff.data) return;
+    setAssignments((current) => {
+      let changed = false;
+      const nextAssignments = { ...current };
+      for (const module of modules) {
+        const fixed = FIXED_MODULE_ASSIGNMENTS[module.module_code];
+        if (!fixed) continue;
+        const resolve = (name: string) => name
+          ? staff.data!.find((person) => staffNameKey(person.full_name) === staffNameKey(name))?.id ?? ""
+          : "";
+        const primary = resolve(fixed.primary);
+        const backup = resolve(fixed.backup);
+        const existing = current[module.module_code] ?? { primary: "", backup: "", contact_name: "", contact_phone: "" };
+        if (existing.primary !== primary || existing.backup !== backup) {
+          nextAssignments[module.module_code] = { ...existing, primary, backup };
+          changed = true;
+        }
+      }
+      return changed ? nextAssignments : current;
+    });
+  }, [assignments, modules, staff.data]);
+
   const agmFile = useRef<File | null>(null);
   const nocFile = useRef<File | null>(null);
-  const payFile = useRef<File | null>(null);
 
   async function uploadDraftFile(cid: string, prefix: string, file: File | null): Promise<string | null> {
     if (!file) return null;
@@ -363,6 +635,8 @@ function NewClient() {
         .from("client_launches")
         .update({
           plan_id: launch.plan_id as string,
+          custom_plan_id: launch.custom_plan_id,
+          ...(selectedCustomPlan?.monthly_retainer_inr != null ? { retainer_inr: selectedCustomPlan.monthly_retainer_inr } : {}),
           quarterly_fee_inr: plan.data?.find((x) => x.id === launch.plan_id)?.quarterly_fee_inr ?? null,
           addons: launch.addons,
           crm_option: launch.crm_option || null,
@@ -379,6 +653,8 @@ function NewClient() {
       .insert({
         client_id: cid,
         plan_id: launch.plan_id as string,
+        custom_plan_id: launch.custom_plan_id,
+        ...(selectedCustomPlan?.monthly_retainer_inr != null ? { retainer_inr: selectedCustomPlan.monthly_retainer_inr } : {}),
         quarterly_fee_inr: p?.quarterly_fee_inr ?? null,
         addons: launch.addons,
         crm_option: launch.crm_option || null,
@@ -399,8 +675,31 @@ function NewClient() {
   }
 
   async function saveBasics() {
-    if (!basics.hotel_name.trim()) {
-      toast.error("Hotel / brand name is required");
+    const requiredBasics: Array<[string, string]> = [
+      ["Hotel / brand name", basics.hotel_name],
+      ["Legal entity name", basics.legal_name],
+      ["Owner name", basics.owner_name],
+      ["General Manager name", basics.gm_name],
+      ["Reservations contact name", basics.res_contact_name],
+      ["Reservations phone", basics.res_contact_phone],
+      ["Owner email", basics.email],
+      ["Mobile / WhatsApp", basics.mobile],
+      ["WhatsApp", basics.whatsapp],
+      ["City", basics.city],
+      ["State", basics.state],
+      ["Address", basics.address],
+      ["Number of rooms", basics.number_of_rooms],
+      ["Property type", basics.property_type],
+      ["Website", basics.website],
+      ["GSTIN", basics.gstin],
+    ];
+    const missingBasics = requiredBasics.find(([, value]) => !value.trim());
+    if (missingBasics) {
+      toast.error(`${missingBasics[0]} is required`);
+      return;
+    }
+    if (Number(basics.number_of_rooms) < 1) {
+      toast.error("Number of rooms must be at least 1");
       return;
     }
     if (!/^\S+@\S+\.\S+$/.test(basics.email.trim())) {
@@ -458,9 +757,13 @@ function NewClient() {
     }
     // Day 0 already confirmed on this launch: a plan change must go through the
     // database (management only), which resets the launch to a draft.
-    if (launch.id && launch.status !== "draft" && launch.plan_id !== originalPlanId.current) {
+    if (launch.id && launch.status !== "draft" && (launch.plan_id !== originalPlanId.current || launch.custom_plan_id !== originalCustomPlanId.current)) {
       if (!isManager) {
         toast.error("Day 0 is already confirmed — ask management to change this plan.");
+        return;
+      }
+      if (launch.custom_plan_id !== originalCustomPlanId.current) {
+        toast.error("A custom plan cannot be swapped on a confirmed launch from onboarding. Use the approved contract change workflow.");
         return;
       }
       setPlanChangeOpen(true);
@@ -470,6 +773,31 @@ function NewClient() {
     try {
       const cid = await ensureClient();
       await saveLaunchDraft(cid);
+      const isNewPendingCustomPlan = !!launch.custom_plan_id
+        && launch.custom_plan_id !== originalCustomPlanId.current
+        && customPlanForLaunch?.approval_status === "pending";
+      originalCustomPlanId.current = launch.custom_plan_id;
+      if (isNewPendingCustomPlan) {
+        const { data: approvers, error: approversError } = await supabase
+          .from("user_roles")
+          .select("user_id, role")
+          .in("role", ["admin", "management"]);
+        if (approversError) {
+          toast.error("Plan saved, but approval notifications could not be sent.");
+        } else {
+          const approverIds = [...new Set((approvers ?? []).map((row) => row.user_id))];
+          if (approverIds.length) {
+            const { error: notificationError } = await supabase.from("notifications").insert(approverIds.map((userId) => ({
+              user_id: userId,
+              title: "Custom client plan needs approval",
+              body: `${basics.hotel_name || "A new client"} · ${customPlanForLaunch?.name ?? "Custom plan"} is waiting for your approval.`,
+              link: "/plans",
+              kind: "plan_approval",
+            })));
+            if (notificationError) toast.error("Plan saved, but approval notifications could not be sent.");
+          }
+        }
+      }
       toast.success("Plan saved");
       next();
     } catch (e) {
@@ -540,6 +868,7 @@ function NewClient() {
       !hasAgreement && "signed agreement",
       !hasNoc && "NOC",
       !launch.advance_received_at && "advance received date",
+      !launch.payment_reference.trim() && "payment UTR/reference",
     ].filter(Boolean);
     if (day0Missing.length) {
       toast.error(`Before Day 0, add: ${day0Missing.join(", ")}`);
@@ -561,7 +890,7 @@ function NewClient() {
         });
         if (error) throw error;
       }
-      // Each file is uploaded and recorded once; its ref is cleared straight after, so a retry never duplicates it.
+      // Each agreement/NOC is uploaded and recorded once; a retry never duplicates it.
       const agreementPath = await uploadDraftFile(cid, "agreement", agmFile.current);
       if (agreementPath) { await saveDoc("Agreement Copy", agreementPath); agmFile.current = null; }
       if (needsNoc && nocFile.current) {
@@ -569,18 +898,15 @@ function NewClient() {
         if (nocPath) { await saveDoc("NOC — No Objection Certificate", nocPath); nocFile.current = null; }
       }
       void qc.invalidateQueries({ queryKey: ["wizard-docs", cid] });
-      const payPath = await uploadDraftFile(cid, "advance", payFile.current);
       const payErr = await supabase
         .from("client_launches")
         .update({
           advance_amount: launch.advance_amount ? Number(launch.advance_amount) : null,
           advance_received_at: launch.advance_received_at || null,
-          payment_reference: launch.payment_reference || null,
-          ...(payPath ? { payment_screenshot_path: payPath } : {}),
+          payment_reference: launch.payment_reference.trim() || null,
         })
         .eq("id", launch.id);
       if (payErr.error) throw payErr.error;
-      if (payPath) { payFile.current = null; setLaunch((prev) => ({ ...prev, payment_screenshot_path: payPath })); }
 
       const { error } = await supabase.rpc("confirm_day0", {
         _launch_id: launch.id,
@@ -597,7 +923,6 @@ function NewClient() {
         ...prev,
         day0_date: fresh?.day0_date ?? prev.day0_date,
         launch_date: fresh?.launch_date ?? prev.launch_date,
-        payment_screenshot_path: payPath ?? prev.payment_screenshot_path,
       }));
       qc.invalidateQueries({ queryKey: ["wizard-docs", cid] });
       toast.success(`Day 0: ${fresh?.day0_date ?? "saved"} · Go-live: ${fresh?.launch_date ?? "scheduled"}`);
@@ -718,47 +1043,47 @@ function NewClient() {
             <p className="text-section-title font-semibold">Hotel basics</p>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Hotel / brand name" required>
-                <Input value={basics.hotel_name} onChange={(e) => setBasics({ ...basics, hotel_name: e.target.value })} placeholder="The Palm Springs Resort" />
+                <Input required value={basics.hotel_name} onChange={(e) => setBasics({ ...basics, hotel_name: e.target.value })} placeholder="The Palm Springs Resort" />
               </Field>
-              <Field label="Legal entity name">
-                <Input value={basics.legal_name} onChange={(e) => setBasics({ ...basics, legal_name: e.target.value })} placeholder="Palm Springs Hospitality Pvt Ltd" />
+              <Field label="Legal entity name" required>
+                <Input required value={basics.legal_name} onChange={(e) => setBasics({ ...basics, legal_name: e.target.value })} placeholder="Palm Springs Hospitality Pvt Ltd" />
               </Field>
-              <Field label="Owner name">
-                <Input value={basics.owner_name} onChange={(e) => setBasics({ ...basics, owner_name: e.target.value })} />
+              <Field label="Owner name" required>
+                <Input required value={basics.owner_name} onChange={(e) => setBasics({ ...basics, owner_name: e.target.value })} />
               </Field>
-              <Field label="General Manager name">
-                <Input value={basics.gm_name} onChange={(e) => setBasics({ ...basics, gm_name: e.target.value })} />
+              <Field label="General Manager name" required>
+                <Input required value={basics.gm_name} onChange={(e) => setBasics({ ...basics, gm_name: e.target.value })} />
               </Field>
-              <Field label="Reservations contact name">
-                <Input value={basics.res_contact_name} onChange={(e) => setBasics({ ...basics, res_contact_name: e.target.value })} />
+              <Field label="Reservations contact name" required>
+                <Input required value={basics.res_contact_name} onChange={(e) => setBasics({ ...basics, res_contact_name: e.target.value })} />
               </Field>
-              <Field label="Reservations phone">
-                <Input value={basics.res_contact_phone} onChange={(e) => setBasics({ ...basics, res_contact_phone: e.target.value })} type="tel" />
+              <Field label="Reservations phone" required>
+                <Input required value={basics.res_contact_phone} onChange={(e) => setBasics({ ...basics, res_contact_phone: e.target.value })} type="tel" />
               </Field>
               <Field label="Owner email (creates their portal login)" required>
-                <Input value={basics.email} onChange={(e) => setBasics({ ...basics, email: e.target.value })} type="email" />
+                <Input required value={basics.email} onChange={(e) => setBasics({ ...basics, email: e.target.value })} type="email" />
               </Field>
-              <Field label="Mobile / WhatsApp">
-                <Input value={basics.mobile} onChange={(e) => setBasics({ ...basics, mobile: e.target.value })} type="tel" />
+              <Field label="Mobile / WhatsApp" required>
+                <Input required value={basics.mobile} onChange={(e) => setBasics({ ...basics, mobile: e.target.value })} type="tel" />
               </Field>
-              <Field label="WhatsApp (if different)">
-                <Input value={basics.whatsapp} onChange={(e) => setBasics({ ...basics, whatsapp: e.target.value })} type="tel" />
+              <Field label="WhatsApp (if different)" required>
+                <Input required value={basics.whatsapp} onChange={(e) => setBasics({ ...basics, whatsapp: e.target.value })} type="tel" />
               </Field>
-              <Field label="City">
-                <Input value={basics.city} onChange={(e) => setBasics({ ...basics, city: e.target.value })} />
+              <Field label="City" required>
+                <Input required value={basics.city} onChange={(e) => setBasics({ ...basics, city: e.target.value })} />
               </Field>
-              <Field label="State">
-                <Input value={basics.state} onChange={(e) => setBasics({ ...basics, state: e.target.value })} />
+              <Field label="State" required>
+                <Input required value={basics.state} onChange={(e) => setBasics({ ...basics, state: e.target.value })} />
               </Field>
-              <Field label="Address">
-                <Input value={basics.address} onChange={(e) => setBasics({ ...basics, address: e.target.value })} />
+              <Field label="Address" required>
+                <Input required value={basics.address} onChange={(e) => setBasics({ ...basics, address: e.target.value })} />
               </Field>
-              <Field label="Number of rooms">
-                <Input value={basics.number_of_rooms} onChange={(e) => setBasics({ ...basics, number_of_rooms: e.target.value })} type="number" min="1" />
+              <Field label="Number of rooms" required>
+                <Input required value={basics.number_of_rooms} onChange={(e) => setBasics({ ...basics, number_of_rooms: e.target.value })} type="number" min="1" />
               </Field>
-              <Field label="Property type">
+              <Field label="Property type" required>
                 <Select value={basics.property_type} onValueChange={(v) => setBasics({ ...basics, property_type: v })}>
-                  <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+                  <SelectTrigger aria-required="true"><SelectValue placeholder="Select type" /></SelectTrigger>
                   <SelectContent>
                     {PROPERTY_TYPES.map((t) => (
                       <SelectItem key={t} value={t}>{t}</SelectItem>
@@ -766,15 +1091,15 @@ function NewClient() {
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="Website">
-                <Input value={basics.website} onChange={(e) => setBasics({ ...basics, website: e.target.value })} placeholder="https://" />
+              <Field label="Website" required>
+                <Input required value={basics.website} onChange={(e) => setBasics({ ...basics, website: e.target.value })} placeholder="https://" />
               </Field>
-              <Field label="GSTIN">
-                <Input value={basics.gstin} onChange={(e) => setBasics({ ...basics, gstin: e.target.value })} placeholder="22AAAAA0000A1Z5" />
+              <Field label="GSTIN" required>
+                <Input required value={basics.gstin} onChange={(e) => setBasics({ ...basics, gstin: e.target.value })} placeholder="22AAAAA0000A1Z5" />
               </Field>
             </div>
             <div className="flex justify-end">
-              <Button onClick={saveBasics} disabled={saving || !basics.hotel_name.trim()}>
+              <Button onClick={saveBasics} disabled={saving}>
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Save & continue <ChevronRight className="ml-2 h-4 w-4" />
               </Button>
@@ -788,12 +1113,12 @@ function NewClient() {
             {plan.isLoading ? <p className="text-sm text-muted-foreground">Loading plans…</p> : null}
             <div className="grid gap-4 md:grid-cols-2">
               {(plan.data ?? []).map((p) => {
-                const active = p.id === launch.plan_id;
+                const active = p.id === launch.plan_id && !launch.custom_plan_id;
                 return (
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => setLaunch({ ...launch, plan_id: p.id })}
+                    onClick={() => setLaunch({ ...launch, plan_id: p.id, custom_plan_id: null })}
                     className={cn(
                       "rounded-xl border p-5 text-left transition-colors",
                       active ? "border-primary bg-primary/5" : "border-border hover:border-primary/40",
@@ -805,15 +1130,36 @@ function NewClient() {
                       {p.duration_weeks ? <span className="text-muted-foreground"> · {p.duration_weeks}-week launch</span> : null}
                     </p>
                     <p className="mt-2 text-xs text-muted-foreground">
-                      {(p.plan_modules ?? [])
-                        .map((m) => m.launch_modules?.name)
-                        .filter(Boolean)
-                        .join(" · ")}
+                      {(p.plan_modules ?? []).map((module) => module.launch_modules?.name).filter(Boolean).join(" · ")}
                     </p>
                   </button>
                 );
               })}
             </div>
+            <div className="flex flex-col gap-4 rounded-xl border border-dashed p-5 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                {customPlanForLaunch ? (
+                  <>
+                    <p className="font-semibold">{customPlanForLaunch.name}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {inr(customPlanForLaunch.monthly_retainer_inr)} / {customPlanForLaunch.payment_cycle}
+                      {customPlanForLaunch.setup_fee_inr != null ? ` · setup ${inr(customPlanForLaunch.setup_fee_inr)}` : ""}
+                    </p>
+                    {customPlanForLaunch.approval_status !== "approved" ? <p className="mt-1 text-xs text-warning">Pending management approval before activation.</p> : null}
+                  </>
+                ) : (
+                  <>
+                    <p className="font-medium">Need a different package?</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Create a client-specific plan from the Plans page template.</p>
+                  </>
+                )}
+              </div>
+              <Button type="button" onClick={openCustomPlanBuilder} disabled={plan.isLoading || planVersions.isLoading || !planVersions.data?.length || saving}>
+                <Plus className="mr-2 h-4 w-4" /> New custom plan
+              </Button>
+            </div>
+            {planVersions.isLoading ? <p className="text-sm text-muted-foreground">Loading active base plan templates…</p> : null}
+            {planVersions.error ? <p role="alert" className="text-sm text-destructive">Could not load base plan templates: {planVersions.error.message}</p> : null}
 
             {isDiamond ? (
               <div className="space-y-4 rounded-lg border border-border p-4">
@@ -856,7 +1202,7 @@ function NewClient() {
             ) : null}
 
             <div className="flex justify-end">
-              <Button onClick={savePlan} disabled={saving || !launch.plan_id}>
+              <Button onClick={savePlan} disabled={saving || !launch.plan_id || (!!launch.custom_plan_id && existingCustomPlan.isLoading)}>
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Save & continue <ChevronRight className="ml-2 h-4 w-4" />
               </Button>
@@ -898,10 +1244,9 @@ function NewClient() {
               <Field label="Advance received on">
                 <Input type="date" value={launch.advance_received_at} onChange={(e) => setLaunch({ ...launch, advance_received_at: e.target.value })} />
               </Field>
-              <Field label="Payment reference / UTR">
-                <Input value={launch.payment_reference} onChange={(e) => setLaunch({ ...launch, payment_reference: e.target.value })} />
+              <Field label="Payment reference / UTR" required>
+                <Input required value={launch.payment_reference} onChange={(e) => setLaunch({ ...launch, payment_reference: e.target.value })} />
               </Field>
-              <FileField label="Payment screenshot" fileRef={payFile} onPick={(v) => setPicked((p) => ({ ...p, pay: v }))} />
             </div>
 
             {wizardDocs.data?.length || launch.payment_screenshot_path ? (
@@ -920,16 +1265,14 @@ function NewClient() {
                   ))}
                   {launch.payment_screenshot_path ? (
                     <li className="flex items-center justify-between gap-2">
-                      <span>Payment screenshot</span>
+                      <span>Existing payment screenshot (view only)</span>
                       <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => viewFile(launch.payment_screenshot_path!)}>
                         View
                       </Button>
                     </li>
                   ) : null}
                 </ul>
-                <p className="mt-1.5 text-label text-muted-foreground">
-                  A newly chosen file is added as a new version — earlier uploads are kept.
-                </p>
+                {launch.payment_screenshot_path ? <p className="mt-1.5 text-label text-muted-foreground">Existing payment evidence is retained for reference; new Day 0 records require a UTR/reference.</p> : null}
               </div>
             ) : null}
 
@@ -941,7 +1284,6 @@ function NewClient() {
                 advanceAmount: launch.advance_amount,
                 advanceDate: launch.advance_received_at,
                 reference: launch.payment_reference,
-                hasScreenshot: picked.pay || !!launch.payment_screenshot_path,
               });
               const missing = items.filter((i) => !i.ok);
               return (
@@ -969,7 +1311,7 @@ function NewClient() {
         {step === 3 ? (
           <div className="space-y-5">
             <p className="text-section-title font-semibold">Launch team</p>
-            <p className="text-sm text-muted-foreground">Every module needs a primary owner before the launch can be activated.</p>
+            <p className="text-sm text-muted-foreground">Primary and backup owners are fixed from your allocation list. A missing staff profile must be activated before this launch can proceed.</p>
             <DataTable<(typeof modules)[number]>
               className="rounded-none border-0 bg-transparent shadow-none"
               rows={modules}
@@ -990,56 +1332,24 @@ function NewClient() {
                   key: "primary",
                   header: "Primary",
                   render: (m) => {
-                    const lm = m.launch_modules;
                     const a = assignments[m.module_code] ?? { primary: "", backup: "", contact_name: "", contact_phone: "" };
-                    const setA = (patch: Partial<typeof a>) =>
-                      setAssignments({ ...assignments, [m.module_code]: { ...a, ...patch } });
-                    const eligible = (staff.data ?? []).filter(
-                      (s) => !lm?.owner_role || s.launch_roles.includes(lm.owner_role),
-                    );
-                    const pool = eligible.length ? eligible : staff.data ?? [];
-                    return (
-                      <>
-                        <Select value={a.primary} onValueChange={(v) => setA({ primary: v, backup: a.backup === v ? "" : a.backup })}>
-                          <SelectTrigger className="h-8 w-40"><SelectValue placeholder="Select" /></SelectTrigger>
-                          <SelectContent>
-                            {pool.map((s) => (
-                              <SelectItem key={s.id} value={s.id}>{s.full_name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {!eligible.length && (staff.data ?? []).length ? (
-                          <p className="mt-1 text-label text-warning-foreground">No one has this launch role yet</p>
-                        ) : null}
-                      </>
-                    );
+                    const fixed = FIXED_MODULE_ASSIGNMENTS[m.module_code];
+                    const selected = (staff.data ?? []).find((s) => s.id === a.primary);
+                    return <span className={selected ? "font-medium" : "text-destructive"}>
+                      {selected?.full_name ?? (fixed ? `Missing staff: ${fixed.primary}` : "No fixed assignment")}
+                    </span>;
                   },
                 },
                 {
                   key: "backup",
                   header: "Backup",
                   render: (m) => {
-                    const lm = m.launch_modules;
                     const a = assignments[m.module_code] ?? { primary: "", backup: "", contact_name: "", contact_phone: "" };
-                    const eligible = (staff.data ?? []).filter(
-                      (s) => !lm?.owner_role || s.launch_roles.includes(lm.owner_role),
-                    );
-                    const pool = eligible.length ? eligible : staff.data ?? [];
-                    return (
-                      <Select
-                        value={a.backup}
-                        onValueChange={(v) =>
-                          setAssignments({ ...assignments, [m.module_code]: { ...a, backup: v } })
-                        }
-                      >
-                        <SelectTrigger className="h-8 w-40"><SelectValue placeholder="Select" /></SelectTrigger>
-                        <SelectContent>
-                          {pool.filter((s) => s.id !== a.primary).map((s) => (
-                            <SelectItem key={s.id} value={s.id}>{s.full_name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    );
+                    const fixed = FIXED_MODULE_ASSIGNMENTS[m.module_code];
+                    const selected = (staff.data ?? []).find((s) => s.id === a.backup);
+                    return <span className={a.backup ? "font-medium" : "text-muted-foreground"}>
+                      {a.backup ? selected?.full_name ?? `Missing staff: ${fixed?.backup ?? ""}` : "—"}
+                    </span>;
                   },
                 },
                 {
@@ -1077,6 +1387,144 @@ function NewClient() {
           <ChevronLeft className="mr-2 h-4 w-4" /> Back
         </Button>
       </div>
+
+      <Dialog open={customPlanDialogOpen} onOpenChange={setCustomPlanDialogOpen}>
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>New custom plan</DialogTitle>
+            <DialogDescription>Build this client’s plan from an active standard plan template. The saved plan will be attached to this onboarding.</DialogDescription>
+          </DialogHeader>
+          {customPlanDraft ? (
+            <div className="space-y-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Plan name" required>
+                  <Input value={customPlanDraft.name} onChange={(event) => setCustomPlanDraft({ ...customPlanDraft, name: event.target.value })} placeholder="e.g. Hotel name — custom plan" />
+                </Field>
+                <Field label="Base plan">
+                  <Select value={customPlanDraft.base_plan_version_id} onValueChange={changeCustomPlanBase}>
+                    <SelectTrigger><SelectValue placeholder="Choose a base plan" /></SelectTrigger>
+                    <SelectContent>
+                      {[...(planVersions.data ?? [])]
+                        .sort((a, b) => (plan.data?.find((item) => item.id === a.plan_id)?.sort_order ?? 99) - (plan.data?.find((item) => item.id === b.plan_id)?.sort_order ?? 99) || b.version - a.version)
+                        .map((version) => <SelectItem key={version.id} value={version.id}>{version.name} (v{version.version})</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Monthly retainer (₹, GST extra)">
+                  <Input type="number" min="0" value={customPlanDraft.monthly_retainer_inr} onChange={(event) => setCustomPlanDraft({ ...customPlanDraft, monthly_retainer_inr: event.target.value })} />
+                </Field>
+                <Field label="Setup fee (₹, one-time)">
+                  <Input type="number" min="0" value={customPlanDraft.setup_fee_inr} onChange={(event) => setCustomPlanDraft({ ...customPlanDraft, setup_fee_inr: event.target.value })} />
+                </Field>
+              </div>
+
+              <div>
+                <Label>Commission % of Alcor-generated revenue, by channel</Label>
+                <div className="mt-1.5 grid gap-3 sm:grid-cols-4">
+                  {COMMISSION_FIELDS.map(({ key, label }) => (
+                    <Field key={key} label={label}>
+                      <Input type="number" min="0" value={customPlanDraft[key]} onChange={(event) => setCustomPlanDraft({ ...customPlanDraft, [key]: event.target.value })} placeholder="Not specified" />
+                    </Field>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <Label>Add-ons</Label>
+                <div className="mt-1.5 flex flex-wrap gap-4">
+                  {(addons.data ?? []).map((addon) => (
+                    <label key={addon.id} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={customPlanDraft.addon_ids.includes(addon.id)}
+                        onCheckedChange={(checked) => setCustomPlanDraft({
+                          ...customPlanDraft,
+                          addon_ids: checked ? [...customPlanDraft.addon_ids, addon.id] : customPlanDraft.addon_ids.filter((id) => id !== addon.id),
+                        })}
+                      />
+                      {addon.name}{addon.price_inr ? ` (${inr(addon.price_inr)}${addon.price_type === "from" ? "+" : ""})` : " (vendor-priced)"}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Contract start"><Input type="date" value={customPlanDraft.contract_start} onChange={(event) => setCustomPlanDraft({ ...customPlanDraft, contract_start: event.target.value })} /></Field>
+                <Field label="Contract end"><Input type="date" value={customPlanDraft.contract_end} onChange={(event) => setCustomPlanDraft({ ...customPlanDraft, contract_end: event.target.value })} /></Field>
+                <Field label="Payment cycle">
+                  <Select value={customPlanDraft.payment_cycle} onValueChange={(value) => setCustomPlanDraft({ ...customPlanDraft, payment_cycle: value })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{["monthly", "quarterly", "annual", "milestone"].map((cycle) => <SelectItem key={cycle} value={cycle}>{cycle}</SelectItem>)}</SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Notice days"><Input type="number" min="0" value={customPlanDraft.notice_days} onChange={(event) => setCustomPlanDraft({ ...customPlanDraft, notice_days: event.target.value })} /></Field>
+              </div>
+              <Field label="Termination terms">
+                <Textarea value={customPlanDraft.termination_terms} onChange={(event) => setCustomPlanDraft({ ...customPlanDraft, termination_terms: event.target.value })} placeholder="Leave blank to keep the base plan’s standard terms" />
+              </Field>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Services</Label>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setCustomPlanDraft({
+                    ...customPlanDraft,
+                    services: [...customPlanDraft.services, { service_name: "", scope: "", frequency: "monthly", pipeline_code: "", included: true, fromBase: false }],
+                  })}>
+                    <Plus className="mr-1.5 h-3.5 w-3.5" /> Add service
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {customPlanDraft.services.map((service, index) => (
+                    <div key={index} className="flex flex-wrap items-center gap-2 rounded-lg border border-border/60 p-2">
+                      <Checkbox
+                        checked={service.included}
+                        onCheckedChange={(checked) => setCustomPlanDraft({
+                          ...customPlanDraft,
+                          services: customPlanDraft.services.map((item, itemIndex) => itemIndex === index ? { ...item, included: checked === true } : item),
+                        })}
+                        aria-label={`Include ${service.service_name || "service"}`}
+                      />
+                      {service.fromBase ? (
+                        <span className={cn("min-w-40 flex-1 text-sm font-medium", !service.included && "line-through opacity-60")}>{service.service_name}</span>
+                      ) : (
+                        <Input className="min-w-40 flex-1" placeholder="Service name" value={service.service_name} onChange={(event) => setCustomPlanDraft({
+                          ...customPlanDraft,
+                          services: customPlanDraft.services.map((item, itemIndex) => itemIndex === index ? { ...item, service_name: event.target.value } : item),
+                        })} />
+                      )}
+                      <Input className="w-36" placeholder="Scope" value={service.scope} onChange={(event) => setCustomPlanDraft({
+                        ...customPlanDraft,
+                        services: customPlanDraft.services.map((item, itemIndex) => itemIndex === index ? { ...item, scope: event.target.value } : item),
+                      })} />
+                      <Input className="w-32" placeholder="Frequency" value={service.frequency} onChange={(event) => setCustomPlanDraft({
+                        ...customPlanDraft,
+                        services: customPlanDraft.services.map((item, itemIndex) => itemIndex === index ? { ...item, frequency: event.target.value } : item),
+                      })} />
+                      <Input className="w-32" placeholder="Pipeline code" value={service.pipeline_code} onChange={(event) => setCustomPlanDraft({
+                        ...customPlanDraft,
+                        services: customPlanDraft.services.map((item, itemIndex) => itemIndex === index ? { ...item, pipeline_code: event.target.value } : item),
+                      })} />
+                      {!service.fromBase ? <Button type="button" size="sm" variant="ghost" aria-label="Remove service" onClick={() => setCustomPlanDraft({
+                        ...customPlanDraft,
+                        services: customPlanDraft.services.filter((_, itemIndex) => itemIndex !== index),
+                      })}><X className="h-3.5 w-3.5" /></Button> : null}
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">Untick a base service to remove it from this custom plan.</p>
+              </div>
+              <p className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning-foreground">
+                Changes from the base plan may require management approval before activation.
+              </p>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCustomPlanDialogOpen(false)}>Cancel</Button>
+            <Button onClick={saveNewCustomPlan} disabled={saving || !customPlanDraft?.name.trim() || !customPlanDraft?.base_plan_version_id}>
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Save custom plan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={planChangeOpen} onOpenChange={(o) => (!o ? setPlanChangeOpen(false) : undefined)}>
         <DialogContent>

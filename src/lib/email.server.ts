@@ -1,4 +1,4 @@
-import { sendGmail, GmailNotConfiguredError } from "@/lib/gmail.server";
+import { sendGmail, GmailNotConfiguredError, type GmailAttachment } from "@/lib/gmail.server";
 
 /**
  * Sends one email as "Alcor North Star <admin@alcorgetaways.com>" through the linked
@@ -14,10 +14,10 @@ export class EmailNotConfiguredError extends Error {
   }
 }
 
-export async function sendEmail(opts: { to: string; cc?: string[]; subject: string; body: string; html?: string }): Promise<void> {
+export async function sendEmail(opts: { to: string; cc?: string[]; subject: string; body: string; html?: string; attachments?: GmailAttachment[] }): Promise<void> {
   if (!opts.to) throw new Error("No recipient address on the message");
   try {
-    await sendGmail({ to: opts.to, ...(opts.cc ? { cc: opts.cc } : {}), subject: opts.subject, text: opts.body });
+    await sendGmail({ to: opts.to, ...(opts.cc ? { cc: opts.cc } : {}), subject: opts.subject, text: opts.body, ...(opts.attachments ? { attachments: opts.attachments } : {}) });
   } catch (e) {
     if (e instanceof GmailNotConfiguredError) throw new EmailNotConfiguredError();
     throw e;

@@ -23,6 +23,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import {
   Select,
   SelectContent,
+  SelectGroup,
+  SelectLabel,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -42,7 +44,7 @@ export const Route = createFileRoute("/_authenticated/actions")({
       { title: "Action Tracker — Alcor North Star" },
       {
         name: "description",
-        content: "Every open issue, owner and due date across the hotel portfolio.",
+        content: "Every open issue, owner and due date across the client portfolio.",
       },
       { property: "og:title", content: "Action Tracker — Alcor North Star" },
       { property: "og:description", content: "Open issues, owners and due dates." },
@@ -104,7 +106,7 @@ function ActionsPage() {
   const [completeText, setCompleteText] = useState("");
   const [completeUploaded, setCompleteUploaded] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [filterOwner, setFilterOwner] = useState("all");
+  const [filterTeam, setFilterTeam] = useState("all");
   const [filterClient, setFilterClient] = useState("all");
   const [filterStatus, setFilterStatus] = useState("open");
   const [view, setView] = useViewPref("actions");
@@ -146,9 +148,43 @@ function ActionsPage() {
     },
   });
 
+  const { data: pipelineTeams = [] } = useQuery({
+    queryKey: ["actions-pipeline-teams"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("pipeline_members")
+        .select("pipeline_id, user_id, role, profiles:user_id(full_name)")
+        .in("role", ["head", "team_member"])
+        .eq("active", true);
+      if (error) throw error;
+      return (data ?? []).flatMap((row) =>
+        row.profiles?.full_name
+          ? [{ pipeline_id: row.pipeline_id, user_id: row.user_id, role: row.role, full_name: row.profiles.full_name }]
+          : [],
+      );
+    },
+  });
+
   const { data: staff = [] } = useQuery({
     queryKey: ["actions-staff"],
     queryFn: fetchActiveStaff,
+  });
+
+  const { data: pipelineHeads = [] } = useQuery({
+    queryKey: ["actions-pipeline-heads", create.pipeline_id],
+    enabled: Boolean(create.pipeline_id),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("pipeline_members")
+        .select("user_id, role, profiles:user_id(full_name)")
+        .eq("pipeline_id", create.pipeline_id)
+        .in("role", ["head", "team_member"])
+        .eq("active", true);
+      if (error) throw error;
+      return (data ?? []).flatMap((row) =>
+        row.profiles?.full_name ? [{ id: row.user_id, full_name: row.profiles.full_name, role: row.role }] : [],
+      );
+    },
   });
 
   const update = useMutation({
@@ -174,17 +210,22 @@ function ActionsPage() {
 
   const add = useMutation({
     mutationFn: async () => {
-      if (!create.client_id) throw new Error("Choose a hotel");
+      if (!create.client_id) throw new Error("Choose a client");
+      if (!create.pipeline_id) throw new Error("Choose a pipeline");
       if (!create.issue.trim()) throw new Error("Describe the issue");
+      if (!create.action_required.trim()) throw new Error("Describe the action required");
+      if (!create.responsible_id) throw new Error("Choose a pipeline head");
+      if (!create.due_date) throw new Error("Choose a due date");
+      if (!create.link_ref.trim()) throw new Error("Link the KPI or red month");
       const { error } = await supabase.from("action_items").insert({
         client_id: create.client_id,
-        pipeline_id: create.pipeline_id || null,
+        pipeline_id: create.pipeline_id,
         issue: create.issue.trim(),
-        action_required: create.action_required.trim() || null,
-        responsible_id: create.responsible_id || null,
+        action_required: create.action_required.trim(),
+        responsible_id: create.responsible_id,
         priority: create.priority as never,
-        due_date: create.due_date || null,
-        link_ref: create.link_ref.trim() || null,
+        due_date: create.due_date,
+        link_ref: create.link_ref.trim(),
         status: "not_started",
         created_by: user?.id ?? null,
       });
@@ -257,9 +298,13 @@ function ActionsPage() {
       : a.completed_at
         ? `Completed ${new Date(a.completed_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" })}${staffName(a.completed_by) ? ` by ${staffName(a.completed_by)}` : ""}`
         : "Completion date not recorded";
-  const ownerOptions = Array.from(new Map(data.filter((a) => a.responsible_id).map((a) => [a.responsible_id!, a.profiles?.full_name ?? "Unknown"])).entries());
+  const [teamPipelineId, teamMemberId] = filterTeam === "all" ? ["", ""] : filterTeam.split(":");
+  const pipelineTeamGroups = pipelines.map((pipeline) => ({
+    ...pipeline,
+    members: pipelineTeams.filter((member) => member.pipeline_id === pipeline.id),
+  })).filter((pipeline) => pipeline.members.length > 0);
   const filtered = data.filter((a) => {
-    if (filterOwner !== "all" && a.responsible_id !== filterOwner) return false;
+    if (filterTeam !== "all" && (a.pipeline_id !== teamPipelineId || a.responsible_id !== teamMemberId)) return false;
     if (filterClient !== "all" && a.client_id !== filterClient) return false;
     if (filterStatus === "completed_month") return a.status === "completed" && !!a.completed_at && istMonthOf(a.completed_at) === thisMonth;
     if (filterStatus === "open" && ["completed", "dropped"].includes(a.status)) return false;
@@ -268,7 +313,7 @@ function ActionsPage() {
   });
 
   const today = todayIST();
-  const boardRows = data.filter((a) => (filterOwner === "all" || a.responsible_id === filterOwner) && (filterClient === "all" || a.client_id === filterClient));
+  const boardRows = data.filter((a) => (filterTeam === "all" || (a.pipeline_id === teamPipelineId && a.responsible_id === teamMemberId)) && (filterClient === "all" || a.client_id === filterClient));
   const counts = actionCounts(boardRows, today);
   const monthDone = completedByMonth(boardRows, thisMonth);
   const monthLabel = new Date(`${thisMonth}-01T00:00:00`).toLocaleDateString("en-IN", { month: "short" });
@@ -299,25 +344,30 @@ function ActionsPage() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={filterOwner} onValueChange={setFilterOwner}>
+        <Select value={filterTeam} onValueChange={setFilterTeam}>
           <SelectTrigger className="h-9 w-48">
-            <SelectValue placeholder="All owners" />
+            <SelectValue placeholder="All teams" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All owners</SelectItem>
-            {ownerOptions.map(([id, name]) => (
-              <SelectItem key={id} value={id}>
-                {name}
-              </SelectItem>
+            <SelectItem value="all">All teams</SelectItem>
+            {pipelineTeamGroups.map((pipeline) => (
+              <SelectGroup key={pipeline.id}>
+                <SelectLabel>{pipeline.name}</SelectLabel>
+                {pipeline.members.map((member) => (
+                  <SelectItem key={`${pipeline.id}:${member.user_id}`} value={`${pipeline.id}:${member.user_id}`}>
+                    {member.full_name} · {member.role === "head" ? "Head" : "Member"}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
             ))}
           </SelectContent>
         </Select>
         <Select value={filterClient} onValueChange={setFilterClient}>
           <SelectTrigger className="h-9 w-56">
-            <SelectValue placeholder="All hotels" />
+            <SelectValue placeholder="All clients" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All hotels</SelectItem>
+            <SelectItem value="all">All clients</SelectItem>
             {clients.map((c) => (
               <SelectItem key={c.id} value={c.id}>
                 {c.hotel_name}
@@ -442,10 +492,10 @@ function ActionsPage() {
       <details><summary className="cursor-pointer text-sm font-medium">Action Tracker help</summary><HelpPanel
         title="How the Action Tracker works"
         lines={[
-          "Anything that needs follow-up — a review reply promised to a hotel, a listing fix, a red KPI month — gets one action here with an owner and a due date.",
+          "Anything that needs follow-up — a review reply promised to a client, a listing fix, a red KPI month — gets one action here with an owner and a due date.",
           "The owner moves it from Not started to In progress, then Completed with an evidence link (screenshot, file or report).",
           "If work stops, mark it Blocked in the task itself; if an action is no longer needed, drop it with a reason — nothing is ever deleted.",
-          "Red-bordered rows are overdue. Use the filters to see just your actions or one hotel.",
+          "Red-bordered rows are overdue. Use the filters to see just your actions or one client.",
           "Link an action to a KPI or red month (e.g. \"GBP calls, Sep 2026\") so the review meeting can trace it back.",
         ]}
       /></details>
@@ -453,90 +503,70 @@ function ActionsPage() {
       <ImportedIssuesPanel isManager={isManagerForIssues} />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] w-[min(36rem,calc(100vw-2rem))] max-w-none gap-2 overflow-hidden p-4 sm:p-4">
           <DialogHeader>
             <DialogTitle>New action</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label>Hotel</Label>
+          <div className="space-y-2">
+            <div className="space-y-0.5">
+              <Label className="text-sm leading-4">Client *</Label>
               <Select value={create.client_id} onValueChange={(v) => setCreate({ ...create, client_id: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose a hotel" />
-                </SelectTrigger>
+                <SelectTrigger className="h-9" aria-required="true"><SelectValue placeholder="Choose a client" /></SelectTrigger>
                 <SelectContent>
-                  {clients.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.hotel_name}
-                    </SelectItem>
-                  ))}
+                  {clients.map((c) => <SelectItem key={c.id} value={c.id}>{c.hotel_name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label>Pipeline (optional)</Label>
-              <Select value={create.pipeline_id} onValueChange={(v) => setCreate({ ...create, pipeline_id: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="None" />
-                </SelectTrigger>
+            <div className="space-y-0.5">
+              <Label className="text-sm leading-4">Pipelines *</Label>
+              <Select value={create.pipeline_id} onValueChange={(v) => setCreate({ ...create, pipeline_id: v, responsible_id: "" })}>
+                <SelectTrigger className="h-9" aria-required="true"><SelectValue placeholder="Choose a pipeline" /></SelectTrigger>
                 <SelectContent>
-                  {pipelines.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
+                  {pipelines.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="na-issue">Issue</Label>
-              <Textarea id="na-issue" rows={2} value={create.issue} onChange={(e) => setCreate({ ...create, issue: e.target.value })} />
+            <div className="space-y-0.5">
+              <Label className="text-sm leading-4" htmlFor="na-issue">Issue *</Label>
+              <Textarea id="na-issue" rows={2} className="h-12 min-h-12 resize-none py-2" required value={create.issue} onChange={(e) => setCreate({ ...create, issue: e.target.value })} />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="na-action">Action required (optional)</Label>
-              <Textarea id="na-action" rows={2} value={create.action_required} onChange={(e) => setCreate({ ...create, action_required: e.target.value })} />
+            <div className="space-y-0.5">
+              <Label className="text-sm leading-4" htmlFor="na-action">Action required *</Label>
+              <Textarea id="na-action" rows={2} className="h-12 min-h-12 resize-none py-2" required value={create.action_required} onChange={(e) => setCreate({ ...create, action_required: e.target.value })} />
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label>Owner</Label>
-                <Select value={create.responsible_id} onValueChange={(v) => setCreate({ ...create, responsible_id: v })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Unassigned" />
-                  </SelectTrigger>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="space-y-0.5">
+                <Label className="text-sm leading-4">Pipeline heads and members *</Label>
+                <Select value={create.responsible_id} onValueChange={(v) => setCreate({ ...create, responsible_id: v })} disabled={!create.pipeline_id || !pipelineHeads.length}>
+                  <SelectTrigger className="h-9" aria-required="true"><SelectValue placeholder={!create.pipeline_id ? "Choose a pipeline first" : pipelineHeads.length ? "Choose a team member" : "No team assigned to this pipeline"} /></SelectTrigger>
                   <SelectContent>
-                    {staff.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.full_name}
-                      </SelectItem>
+                    {pipelineHeads.map((s) => (
+                      <SelectItem key={`${s.id}:${s.role}`} value={s.id}>{s.full_name} · {s.role === "head" ? "Head" : "Member"}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5">
-                <Label>Priority</Label>
+              <div className="space-y-0.5">
+                <Label className="text-sm leading-4">Priority *</Label>
                 <Select value={create.priority} onValueChange={(v) => setCreate({ ...create, priority: v })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger className="h-9" aria-required="true"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {Object.entries(ACTION_PRIORITY_LABELS).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
+                    {Object.entries(ACTION_PRIORITY_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="na-due">Due date (optional)</Label>
-                <Input id="na-due" type="date" value={create.due_date} onChange={(e) => setCreate({ ...create, due_date: e.target.value })} />
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="space-y-0.5">
+                <Label className="text-sm leading-4" htmlFor="na-due">Due date *</Label>
+                <Input className="h-9" id="na-due" type="date" required value={create.due_date} onChange={(e) => setCreate({ ...create, due_date: e.target.value })} />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="na-link">Linked KPI / red month (optional)</Label>
-                <Input id="na-link" value={create.link_ref} onChange={(e) => setCreate({ ...create, link_ref: e.target.value })} placeholder="e.g. GBP calls, Sep 2026" />
+              <div className="space-y-0.5">
+                <Label className="text-sm leading-4" htmlFor="na-link">Linked KPI / red month *</Label>
+                <Input className="h-9" id="na-link" required value={create.link_ref} onChange={(e) => setCreate({ ...create, link_ref: e.target.value })} placeholder="e.g. GBP calls, Sep 2026" />
               </div>
             </div>
-            <Button onClick={() => add.mutate()} disabled={add.isPending}>
+            <Button className="h-9" onClick={() => add.mutate()} disabled={add.isPending || !create.client_id || !create.pipeline_id || !create.issue.trim() || !create.action_required.trim() || !create.responsible_id || !create.due_date || !create.link_ref.trim()}>
               {add.isPending ? "Adding…" : "Add action"}
             </Button>
           </div>

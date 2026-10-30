@@ -1,4 +1,4 @@
-import { AllKpis, MainKpis } from "@/components/MainKpis";
+import { AllKpis, MainKpiCards, MainKpis } from "@/components/MainKpis";
 import { PropertyFilter, usePropertySelection } from "@/components/PropertyFilter";
 import { selectedProperties } from "@/lib/property-filter";
 import type { ReactNode } from "react";
@@ -926,11 +926,10 @@ function KeywordPanel({ rows, p }: { rows: MonthValues[]; p: Period }) {
 }
 
 // ───────────── MANAGEMENT / BD DASHBOARD BLOCK ─────────────
-function MarketingBlock({ source, gran }: { source: SourceKind; gran: Granularity }) {
+function MarketingBlock({ source, gran, selectedClientId, includeInternal, included }: { source: SourceKind; gran: Granularity; selectedClientId: string; includeInternal: boolean; included: boolean }) {
   const code = source === "localo" ? "gbp" : "social_media";
   const { data: visibleCps = [], isLoading } = usePipelineClients(code);
-  const selection = usePropertySelection();
-  const cps = selectedProperties(visibleCps, selection.ids, selection.includeInternal);
+  const cps = selectedProperties(visibleCps, [selectedClientId], includeInternal);
   const { data: agg, isLoading: l2 } = useProfiles(source);
   const { data: mapping = {} } = useMappingStatus(source);
   const byCp = useMemo(() => Object.fromEntries(cps.map((c) => [c.id, agg?.[c.id] ?? []])) as Record<string, Profile[]>, [agg, cps]);
@@ -962,6 +961,7 @@ function MarketingBlock({ source, gran }: { source: SourceKind; gran: Granularit
   );
   const sync = allProfiles.map((x) => x.fetchedAt).filter((x): x is string => !!x).sort().at(-1) ?? null;
   const noData = cps.filter((cp) => !(byCp[cp.id] ?? []).length);
+  if (!included) return null;
   return (
     <section className="card-surface p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -971,7 +971,7 @@ function MarketingBlock({ source, gran }: { source: SourceKind; gran: Granularit
         </div>
         <div className="flex items-center gap-2">
           {pending ? <Badge variant="outline" className="h-5 whitespace-nowrap border-warning/40 px-1.5 text-[10px] text-warning">Not yet approved</Badge> : null}
-          <Link to={source === "localo" ? "/gbp" : "/social"} search={{ tab: "performance", props: selection.ids.join(",") || undefined, internal: selection.includeInternal || undefined }} className="text-small font-medium text-primary hover:underline">
+          <Link to={source === "localo" ? "/gbp" : "/social"} search={{ tab: "performance", props: selectedClientId, internal: includeInternal || undefined }} className="text-small font-medium text-primary hover:underline">
             {source === "localo" ? "GBP Performance" : "Social Performance"} →
           </Link>
         </div>
@@ -980,27 +980,101 @@ function MarketingBlock({ source, gran }: { source: SourceKind; gran: Granularit
         <p className="mt-4 text-small text-muted-foreground">Loading…</p>
       ) : (
         <TooltipProvider delayDuration={150}>
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="mt-4 grid grid-cols-2 gap-2.5 md:grid-cols-3 2xl:grid-cols-4">
             {kpis.map((k) => {
               const cur = profilesOver(series, c.months, k.key);
               const like = compareLike(series, c.months, c.cmp, k.key);
               return (
-                <div key={k.key} className="rounded-md border border-border p-3">
-                  <p className="flex items-center gap-1 text-label-muted">{k.label} <InfoTip k={k.key} /></p>
-                  <p className="mt-1 text-[1.75rem] leading-tight font-semibold tabular-nums">{fmt(cur)}</p>
+                <div key={k.key} className="min-w-0 rounded-md border border-border bg-background/70 p-2.5">
+                  <p className="flex min-h-8 items-start gap-1 text-xs leading-snug text-muted-foreground">{k.label} <InfoTip k={k.key} /></p>
+                  <p className="mt-1 text-[clamp(1.125rem,1.4vw,1.5rem)] leading-tight font-semibold tracking-tight tabular-nums">{fmt(cur)}</p>
                   <Delta pct={like.pct} />
-                  <p className="text-label text-muted-foreground">Compared: {like.compared} of {like.total}</p>
+                  <p className="mt-0.5 text-xs leading-snug text-muted-foreground">Compared {like.compared}/{like.total} profiles</p>
                 </div>
               );
             })}
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-4">
-            <div><p className="mb-1 text-label-muted">Top 3 · {source === "localo" ? "interactions" : "posts"} growth</p>{list(ranked.slice(0, 3), "text-success")}</div>
-            <div><p className="mb-1 text-label-muted">Bottom 3</p>{list(ranked.slice(-3).reverse().filter((r) => !ranked.slice(0, 3).includes(r)), "text-destructive")}</div>
-          </div>
-          <p className="mt-3 text-label text-muted-foreground">Ranked only when at least {cfg.minBase} in the comparison period and tracked in both periods.{noData.length ? ` No data: ${noData.map((x) => `${x.clients?.hotel_name} (${emptyReason(source, mapping[x.id])})`).join("; ")}.` : ""}</p>
+          {!allProfiles.length && cps[0] ? (
+            <div className="mt-5 border-t border-border/70 pt-4">
+              <MainKpis clientPipelineId={cps[0].id} month={c.months.at(-1) ?? c.last} title={`${source === "localo" ? "Google Business Profile" : "Social media"} pipeline KPIs`} />
+            </div>
+          ) : null}
+          {!allProfiles.length ? <p className="mt-3 text-xs text-muted-foreground">This pipeline is included in the client’s plan. KPIs will remain here and populate when profile data is linked or updated.</p> : <>
+            <div className="mt-4 grid grid-cols-2 gap-4">
+              <div><p className="mb-1 text-label-muted">Top 3 · {source === "localo" ? "interactions" : "posts"} growth</p>{list(ranked.slice(0, 3), "text-success")}</div>
+              <div><p className="mb-1 text-label-muted">Bottom 3</p>{list(ranked.slice(-3).reverse().filter((r) => !ranked.slice(0, 3).includes(r)), "text-destructive")}</div>
+            </div>
+            <p className="mt-3 text-label text-muted-foreground">Ranked only when at least {cfg.minBase} in the comparison period and tracked in both periods.{noData.length ? ` No data: ${noData.map((x) => `${x.clients?.hotel_name} (${emptyReason(source, mapping[x.id])})`).join("; ")}.` : ""}</p>
+          </>}
         </TooltipProvider>
       )}
+    </section>
+  );
+}
+
+function IncludedPlanKpis({ clientId, includedCodes }: { clientId: string; includedCodes: string[] }) {
+  const pipelinesQuery = useQuery({
+    queryKey: ["dashboard-included-pipelines", clientId, includedCodes],
+    enabled: Boolean(clientId && includedCodes.length),
+    queryFn: async () => {
+      const [cpResult, pipelineResult] = await Promise.all([
+        supabase.from("client_pipelines").select("id, status, pipelines!inner(code)").eq("client_id", clientId).neq("status", "ended"),
+        supabase.from("pipelines").select("id, code, name, sort_order").eq("active", true).eq("client_facing", true).in("code", includedCodes).order("sort_order", { ascending: true }),
+      ]);
+      if (cpResult.error) throw cpResult.error;
+      if (pipelineResult.error) throw pipelineResult.error;
+      return {
+        clientPipelines: (cpResult.data ?? []) as unknown as Array<{ id: string; status: string; pipelines: { code: string } }>,
+        pipelines: pipelineResult.data ?? [],
+      };
+    },
+  });
+  const pipelineIds = (pipelinesQuery.data?.pipelines ?? []).map((pipeline) => pipeline.id);
+  const definitionsQuery = useQuery({
+    queryKey: ["dashboard-included-pipeline-kpi-definitions", pipelineIds],
+    enabled: pipelineIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("kpi_definitions")
+        .select("id, pipeline_id, name, kpi_type, direction, main_position")
+        .in("pipeline_id", pipelineIds).eq("active", true).eq("is_main", true)
+        .order("main_position", { ascending: true });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  if (pipelinesQuery.isLoading) return <p className="text-sm text-muted-foreground">Loading included pipeline KPIs…</p>;
+  if (pipelinesQuery.error || definitionsQuery.error) return <p role="alert" className="text-sm text-destructive">Could not load the included pipeline KPI cards.</p>;
+
+  const pipelines = (pipelinesQuery.data?.pipelines ?? []).filter((pipeline) => !["gbp", "social_media"].includes(pipeline.code));
+  const clientPipelines = pipelinesQuery.data?.clientPipelines ?? [];
+  const definitions = definitionsQuery.data ?? [];
+  if (!pipelines.length) return null;
+
+  return (
+    <section className="space-y-5">
+      <h3 className="font-display text-lg font-semibold">Other included pipeline KPIs</h3>
+      {pipelines.map((pipeline) => {
+        const clientPipeline = clientPipelines.find((item) => item.pipelines.code === pipeline.code);
+        const items = definitions.filter((item) => item.pipeline_id === pipeline.id).map((item) => ({
+          definition_id: item.id,
+          name: item.name,
+          value: null,
+          kpi_type: item.kpi_type,
+          direction: item.direction,
+        }));
+        return (
+          <section key={pipeline.id} className="card-surface space-y-3 p-5">
+            {clientPipeline ? (
+              <MainKpis clientPipelineId={clientPipeline.id} month={lastCompleteMonth()} title={`${pipeline.name} · Main KPIs`} />
+            ) : (
+              <>
+                <h4 className="text-section-title font-semibold">{pipeline.name} · Main KPIs</h4>
+                {items.length ? <MainKpiCards items={items} /> : <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">Included in this plan; KPI definitions are not configured yet.</p>}
+              </>
+            )}
+          </section>
+        );
+      })}
     </section>
   );
 }
@@ -1009,8 +1083,42 @@ export function MarketingPerformance({ only, granularity }: { only?: SourceKind;
   const { data: gbpCps = [] } = usePipelineClients("gbp");
   const { data: socialCps = [] } = usePipelineClients("social_media");
   const options = [...new Map((only === "localo" ? gbpCps : only === "metricool" ? socialCps : [...gbpCps, ...socialCps]).map((c) => [c.client_id, { id: c.client_id, name: c.clients?.hotel_name ?? "Property", internal: !!c.clients?.is_internal }])).values()].sort((a,b) => a.name.localeCompare(b.name));
+  const selection = usePropertySelection();
+  const [selectedClientId, setSelectedClientId] = useState(selection.ids[0] ?? "");
+  const { data: includedCodes = [], isLoading: planLoading, error: planError } = useQuery({
+    queryKey: ["dashboard-client-plan-pipelines", selectedClientId],
+    enabled: Boolean(selectedClientId),
+    queryFn: async () => {
+      const { data: launch, error: launchError } = await supabase.from("client_launches")
+        .select("plan_version_id, custom_plan_id")
+        .eq("client_id", selectedClientId)
+        .in("status", ["active", "live"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (launchError) throw launchError;
+      if (!launch) return [] as string[];
+      if (launch.custom_plan_id) {
+        const { data, error } = await supabase.from("custom_plan_services").select("pipeline_code")
+          .eq("custom_plan_id", launch.custom_plan_id).eq("included", true);
+        if (error) throw error;
+        return (data ?? []).map((service) => service.pipeline_code).filter((code): code is string => Boolean(code));
+      }
+      if (!launch.plan_version_id) return [] as string[];
+      const { data, error } = await supabase.from("plan_services").select("pipeline_code")
+        .eq("plan_version_id", launch.plan_version_id).eq("included", true);
+      if (error) throw error;
+      return (data ?? []).map((service) => service.pipeline_code).filter((code): code is string => Boolean(code));
+    },
+  });
   const [localGran, setGran] = useState<Granularity>("month");
   const gran = granularity ?? localGran;
+  const selectClient = (clientId: string) => {
+    setSelectedClientId(clientId);
+    const url = new URL(window.location.href);
+    url.searchParams.set("props", clientId);
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  };
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1018,15 +1126,24 @@ export function MarketingPerformance({ only, granularity }: { only?: SourceKind;
           <h2 className="font-display text-xl font-semibold">Marketing performance</h2>
           <p className="text-label text-muted-foreground">Automatic {only === "localo" ? "Localo" : only === "metricool" ? "Metricool" : "Localo and Metricool"} data, complete months only. Staff see every fetched month; hotels see approved months only.</p>
         </div>
-        <PropertyFilter options={options} />
+        <PropertyFilter options={options} singleSelect selectedId={selectedClientId} onSelect={selectClient} />
         {granularity === undefined ? (
           <SegmentedPill ariaLabel="Marketing period" value={gran} onChange={(v) => setGran(v as Granularity)} items={(["month", "quarter", "year"] as const).map((g) => ({ value: g, label: g.charAt(0).toUpperCase() + g.slice(1) }))} />
         ) : null}
       </div>
-      <div className={cn("grid gap-5", !only && "xl:grid-cols-2")}>
-        {only !== "metricool" ? <MarketingBlock source="localo" gran={gran} /> : null}
-        {only !== "localo" ? <MarketingBlock source="metricool" gran={gran} /> : null}
-      </div>
+      {planError ? <p role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">Could not read this client’s plan pipeline access.</p> : planLoading ? (
+        <p className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">Loading the client’s included pipelines…</p>
+      ) : !selectedClientId ? (
+        <p className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">Select one client to view that client’s marketing performance.</p>
+      ) : !includedCodes.some((code) => (only !== "metricool" && code === "gbp") || (only !== "localo" && code === "social_media")) ? (
+        <p className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">This client’s current plan does not include these marketing pipelines.</p>
+      ) : (
+        <div className={cn("grid gap-5", !only && "xl:grid-cols-2")}>
+          {only !== "metricool" ? <MarketingBlock source="localo" gran={gran} selectedClientId={selectedClientId} includeInternal={selection.includeInternal} included={includedCodes.includes("gbp")} /> : null}
+          {only !== "localo" ? <MarketingBlock source="metricool" gran={gran} selectedClientId={selectedClientId} includeInternal={selection.includeInternal} included={includedCodes.includes("social_media")} /> : null}
+        </div>
+      )}
+      {selectedClientId && !planLoading && !planError ? <IncludedPlanKpis clientId={selectedClientId} includedCodes={includedCodes} /> : null}
     </section>
   );
 }

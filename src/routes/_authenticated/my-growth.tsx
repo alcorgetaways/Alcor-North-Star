@@ -2,9 +2,9 @@ import { HotelMainKpis, MainKpiCards } from "@/components/MainKpis";
 import { ownerAdsMain } from "@/lib/main-kpis";
 import { useState } from "react";
 import { CombinedOwnerReport } from "@/components/CombinedOwnerReport";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Download } from "lucide-react";
+import { ArrowRight, Building2, Download } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { PageHeader } from "@/components/PageHeader";
@@ -79,7 +79,7 @@ type MyKpis = {
 };
 
 function MyGrowth() {
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const month = monthKey();
   const [cardMonth, setCardMonth] = useState(previousMonthKey(monthKey()));
 
@@ -91,6 +91,7 @@ function MyGrowth() {
 
   const { data: launch } = useQuery({
     queryKey: ["my-launch"],
+    enabled: Boolean(profile?.client_id),
     queryFn: async () => {
       const { data, error } = await supabase.rpc("get_my_launch");
       if (error) throw error;
@@ -127,6 +128,7 @@ function MyGrowth() {
   // Everything here comes from the one owner-safe RPC: approved data only, no internal notes.
   const kpisQ = useQuery({
     queryKey: ["my-kpis"],
+    enabled: Boolean(profile?.client_id),
     queryFn: async () => {
       const { data, error } = await supabase.rpc("get_my_kpis", { _from: twelveMonthsAgo() });
       if (error) throw error;
@@ -187,6 +189,23 @@ function MyGrowth() {
   ];
   const activeTab = tabs.some((t) => t.value === tab) ? tab : "overview";
   const latestGbp = [...gbp].sort((a, b) => b.month.localeCompare(a.month))[0];
+
+  if (authLoading) return <CardSkeleton className="h-48" />;
+  if (!profile?.client_id) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="MY GROWTH" description="Your hotel's approved monthly performance." />
+        <section className="card-surface flex gap-4 p-6">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-gold/10 text-gold"><Building2 className="h-5 w-5" /></div>
+          <div>
+            <h2 className="text-section-title font-semibold">Growth reports are waiting for your hotel link</h2>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">This login is not linked to a hotel, so no scorecards or pipeline results can be shown. Once the correct hotel is linked, this page will show approved results only.</p>
+            <Link to="/home" className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-gold hover:underline">Back to your dashboard <ArrowRight className="h-4 w-4" /></Link>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

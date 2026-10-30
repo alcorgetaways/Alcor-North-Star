@@ -50,7 +50,7 @@ type MyLaunchData = {
 };
 
 function MyLaunch() {
-  useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [comment, setComment] = useState<Record<string, string>>({});
@@ -85,19 +85,32 @@ function MyLaunch() {
     if (status && ["live", "closed"].includes(status)) navigate({ to: "/my-growth", replace: true });
   }, [launch.isLoading, launch.data, navigate]);
 
-  if (launch.isLoading) return <PageSkeleton label="Loading your launch" />;
+  if (authLoading || launch.isLoading) return <PageSkeleton label="Loading your launch" />;
   if (launch.error) return <QueryError error={launch.error} what="your launch" />;
+
+  if (!profile?.client_id) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="My Launch" description="Your onboarding status." />
+        <div className="card-surface space-y-2 p-6">
+          <p className="text-section-title font-semibold">This login is not linked to a hotel</p>
+          <p className="text-sm text-muted-foreground">Your launch roadmap will appear here after an Alcor admin links your account to the correct hotel.</p>
+          <Button asChild variant="outline" className="mt-2"><Link to="/home">Back to dashboard</Link></Button>
+        </div>
+      </div>
+    );
+  }
 
   const l = launch.data;
   if (!l) {
     return (
       <div className="space-y-6">
         <PageHeader title="My Launch" description="Your onboarding status." />
-        <div className="rounded-xl border border-dashed border-border p-12 text-center">
-          <p className="text-section-title font-semibold">Your onboarding is complete</p>
-          <p className="mt-1 text-sm text-muted-foreground">Follow your results in MY GROWTH.</p>
-          <Button asChild className="mt-4">
-            <Link to="/my-growth">Open MY GROWTH</Link>
+        <div className="card-surface space-y-2 p-6">
+          <p className="text-section-title font-semibold">No active launch is available</p>
+          <p className="text-sm text-muted-foreground">Your account is linked, but no current launch roadmap was found. Contact your Alcor Account Manager to confirm the launch record.</p>
+          <Button asChild variant="outline" className="mt-2">
+            <Link to="/home">Back to dashboard</Link>
           </Button>
         </div>
       </div>

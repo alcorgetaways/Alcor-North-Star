@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { currency } from "@/lib/kpi";
 import { fmtCommission } from "@/lib/commission";
+import { clientTradeNamesFor } from "@/lib/client-trade-names";
 
 export const Route = createFileRoute("/_authenticated/finance")({
   head: () => ({
@@ -96,6 +97,18 @@ function fmtDate(d: string | null): string {
   });
 }
 
+function currentMonthInput(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function billingMonthLabel(month: string): string {
+  if (!/^\d{4}-\d{2}$/.test(month)) return month;
+  return new Date(`${month}-01T00:00:00Z`).toLocaleDateString("en-IN", {
+    month: "short", year: "numeric", timeZone: "UTC",
+  });
+}
+
 
 function csvCell(v: string | number | null | undefined): string {
   const s = v === null || v === undefined ? "" : String(v);
@@ -122,10 +135,26 @@ function FinancePage() {
   });
   const codeOf = (id: string) => codes?.get(id) ?? "";
 
+  const [paymentMonth, setPaymentMonth] = useState(currentMonthInput);
   const [status, setStatus] = useState("all");
   const [plan, setPlan] = useState("all");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [paymentStatus, setPaymentStatus] = useState("all");
+  const billingMonth = `${paymentMonth}-01`;
+
+  const monthlyPaymentsQuery = useQuery({
+    queryKey: ["finance-monthly-payment-statuses", billingMonth],
+    queryFn: async () => {
+      const paymentDb = supabase as any;
+      const { data, error } = await paymentDb.from("client_payments")
+        .select("client_id,status").eq("billing_month", billingMonth).limit(5000);
+      if (error) throw error;
+      return (data ?? []) as Array<{ client_id: string; status: "paid" | "pending" }>;
+    },
+  });
+  const monthlyPaymentByClient = useMemo(
+    () => new Map((monthlyPaymentsQuery.data ?? []).map((p) => [p.client_id, p.status])),
+    [monthlyPaymentsQuery.data],
+  );
 
   const rows = useMemo<FlatRow[]>(
     () =>
@@ -143,11 +172,15 @@ function FinancePage() {
       rows.filter((r) => {
         if (status !== "all" && r.status !== status) return false;
         if (plan !== "all" && r.plan_name !== plan) return false;
-        if (from && (!r.contract_start || r.contract_start < from)) return false;
-        if (to && (!r.contract_start || r.contract_start > to)) return false;
+        if (paymentStatus !== "all") {
+          if (monthlyPaymentsQuery.isLoading || monthlyPaymentsQuery.isError) return false;
+          const isPaid = monthlyPaymentByClient.get(r.client.id) === "paid";
+          if (paymentStatus === "paid" && !isPaid) return false;
+          if (paymentStatus === "unpaid" && isPaid) return false;
+        }
         return true;
       }),
-    [rows, status, plan, from, to],
+    [rows, status, plan, paymentStatus, monthlyPaymentByClient, monthlyPaymentsQuery.isLoading, monthlyPaymentsQuery.isError],
   );
 
   const depositsHeld = useMemo(
@@ -164,13 +197,18 @@ function FinancePage() {
 
   function exportCsv() {
     const head = [
-      "Client code", "Client", "Plan", "Base plan", "Status", "Monthly retainer (INR)", "Recurring add-ons (INR / month)", "Billing", "Direct commission", "OTA commission", "Weddings commission",
+      "Client code", "Member / client name", "Trade name", "Payment month", "Monthly payment status", "Plan", "Base plan", "Launch status", "Monthly retainer (INR)", "Recurring add-ons (INR / month)", "Billing", "Direct commission", "OTA commission", "Weddings commission",
       "Setup fee (INR)", "Add-ons", "Deposit (INR)", "Contract start", "Contract end",
       "Renewal date", "Notice deadline", "Notice given", "Within minimum term", "Minimum term ends", "Closing reason", "Closed on", "Payment reference", "Review items",
     ];
     const lines = filtered.map((r) =>
       [
-        codeOf(r.client.id), r.client.hotel_name, r.plan_name ?? "", r.base_plan_name ?? "", r.status, r.retainer_inr ?? "",
+        codeOf(r.client.id),
+        clientTradeNamesFor(r.client.hotel_name)?.member ?? r.client.hotel_name,
+        clientTradeNamesFor(r.client.hotel_name)?.tradeName ?? "",
+        paymentMonth,
+        monthlyPaymentsQuery.isError ? "Unavailable" : monthlyPaymentsQuery.isLoading ? "Loading" : monthlyPaymentByClient.get(r.client.id) === "paid" ? "Paid" : "Unpaid",
+        r.plan_name ?? "", r.base_plan_name ?? "", r.status, r.retainer_inr ?? "",
         (r.recurring_fees ?? []).map((f) => `${f.name} ${f.monthly_inr}`).join("; "),
         [r.payment_cycle, r.billing_basis].filter(Boolean).join(" · "),
         fmtCommission(r.commission_direct_pct), fmtCommission(r.commission_ota_pct), fmtCommission(r.commission_weddings_pct), r.setup_fee_inr ?? "", r.addons.join("; "), r.deposit_inr ?? "",
@@ -234,13 +272,18 @@ function FinancePage() {
               </SelectContent>
             </Select>
             <label className="flex items-center gap-2 text-small text-muted-foreground">
-              Contract from
-              <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" />
+              Payment month
+              <Input type="month" value={paymentMonth} onChange={(e) => e.target.value && setPaymentMonth(e.target.value)} className="w-40" />
             </label>
-            <label className="flex items-center gap-2 text-small text-muted-foreground">
-              to
-              <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
-            </label>
+            <Select value={paymentStatus} onValueChange={setPaymentStatus} disabled={monthlyPaymentsQuery.isLoading || monthlyPaymentsQuery.isError}>
+              <SelectTrigger className="w-44"><SelectValue placeholder="Payment status" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All payments</SelectItem>
+                <SelectItem value="paid">Paid</SelectItem>
+                <SelectItem value="unpaid">Unpaid</SelectItem>
+              </SelectContent>
+            </Select>
+            {monthlyPaymentsQuery.isError ? <span role="alert" className="text-label text-destructive">Could not load monthly payments. Check that the client_payments migration is applied.</span> : null}
             <span className="ml-auto text-label text-muted-foreground tabular-nums">
               {filtered.length} of {rows.length} launches
             </span>
@@ -249,14 +292,18 @@ function FinancePage() {
         columns={[
           {
             key: "client",
-            header: "Client",
-            render: (r) => (
-              <span className="font-medium">
-                {r.client.hotel_name}
+            header: "Member / client name · trade name",
+            render: (r) => {
+              const names = clientTradeNamesFor(r.client.hotel_name);
+              return <span className="font-medium">
+                <span className="block">{names?.member ?? r.client.hotel_name}</span>
+                <span className="block text-label font-normal text-muted-foreground">
+                  Trade name: {names?.tradeName ?? "Not provided"}
+                </span>
                 {codeOf(r.client.id) ? <span className="block text-label font-normal text-muted-foreground">{codeOf(r.client.id)}</span> : null}
                 {r.client.is_test ? <Badge variant="outline" className="ml-2">Test</Badge> : null}
-              </span>
-            ),
+              </span>;
+            },
           },
           {
             key: "plan",
@@ -275,6 +322,16 @@ function FinancePage() {
             key: "status",
             header: "Status",
             render: (r) => <StatusBadge status={r.status} label={r.status.replace(/_/g, " ")} />,
+          },
+          {
+            key: "payment",
+            header: `Payment · ${billingMonthLabel(paymentMonth)}`,
+            render: (r) => {
+              if (monthlyPaymentsQuery.isError) return <StatusBadge status="unknown" label="Unavailable" />;
+              if (monthlyPaymentsQuery.isLoading) return <span className="text-label text-muted-foreground">Loading…</span>;
+              const paid = monthlyPaymentByClient.get(r.client.id) === "paid";
+              return <StatusBadge status={paid ? "paid" : "pending"} label={paid ? "Paid" : "Unpaid"} />;
+            },
           },
           {
             key: "retainer",

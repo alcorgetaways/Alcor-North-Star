@@ -6,7 +6,6 @@ export type Day0Input = {
   advanceAmount: string | number | null;
   advanceDate: string | null;
   reference: string | null;
-  hasScreenshot: boolean;
 };
 
 export function day0Checklist(i: Day0Input): Array<{ label: string; ok: boolean }> {
@@ -15,7 +14,7 @@ export function day0Checklist(i: Day0Input): Array<{ label: string; ok: boolean 
   items.push(
     { label: "Advance amount recorded", ok: Number(i.advanceAmount ?? 0) > 0 },
     { label: "Advance payment date recorded", ok: !!i.advanceDate },
-    { label: "Payment reference or screenshot", ok: !!(i.reference ?? "").trim() || i.hasScreenshot },
+    { label: "Payment UTR / reference recorded", ok: !!(i.reference ?? "").trim() },
   );
   return items;
 }

@@ -15,26 +15,63 @@ export class GmailNotConfiguredError extends Error {
   }
 }
 
-export type GmailMessage = { to: string; cc?: string[]; subject: string; text: string };
+export type GmailAttachment = { filename: string; mimeType: string; contentBase64: string };
+export type GmailMessage = { to: string; cc?: string[]; subject: string; text: string; attachments?: GmailAttachment[] };
 
-const b64url = (s: string) =>
-  btoa(String.fromCharCode(...new TextEncoder().encode(s)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-const encodeHeader = (s: string) => (/^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${b64url(s)}?=`);
+function base64(bytes: Uint8Array) {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+}
+
+const b64url = (s: string) => base64(new TextEncoder().encode(s))
+  .replace(/\+/g, "-")
+  .replace(/\//g, "_")
+  .replace(/=+$/, "");
+const encodeHeader = (s: string) => (/^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${base64(new TextEncoder().encode(s))}?=`);
+const wrapBase64 = (s: string) => s.match(/.{1,76}/g)?.join("\r\n") ?? "";
 
 function rawMessage(msg: GmailMessage): string {
   const cc = [...new Set(msg.cc ?? [])];
+  const attachments = msg.attachments ?? [];
   const headers = [
     `From: ${GMAIL_FROM}`,
     `To: <${msg.to}>`,
     ...(cc.length ? [`Cc: ${cc.map((v) => `<${v}>`).join(", ")}`] : []),
-    `Subject: ${encodeHeader(msg.subject)}`,
+    `Subject: ${encodeHeader(msg.subject.replace(/[\r\n]+/g, " "))}`,
     "MIME-Version: 1.0",
-    'Content-Type: text/plain; charset="UTF-8"',
   ];
-  return b64url(`${headers.join("\r\n")}\r\n\r\n${msg.text}`);
+  if (!attachments.length) {
+    headers.push('Content-Type: text/plain; charset="UTF-8"');
+    return b64url(`${headers.join("\r\n")}\r\n\r\n${msg.text}`);
+  }
+
+  const boundary = `northstar_${crypto.randomUUID().replace(/-/g, "")}`;
+  headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+  const parts = [
+    `--${boundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: base64",
+    "",
+    wrapBase64(base64(new TextEncoder().encode(msg.text))),
+  ];
+  for (const attachment of attachments) {
+    const filename = attachment.filename.replace(/[\r\n"\\]/g, "_");
+    const mimeType = /^[\w.+-]+\/[\w.+-]+$/.test(attachment.mimeType) ? attachment.mimeType : "application/octet-stream";
+    parts.push(
+      `--${boundary}`,
+      `Content-Type: ${mimeType}; name="${filename}"`,
+      "Content-Transfer-Encoding: base64",
+      `Content-Disposition: attachment; filename="${filename}"`,
+      "",
+      wrapBase64(attachment.contentBase64.replace(/\s/g, "")),
+    );
+  }
+  parts.push(`--${boundary}--`, "");
+  return b64url(`${headers.join("\r\n")}\r\n\r\n${parts.join("\r\n")}`);
 }
 
 /** Sends one message through Gmail. Returns the Gmail message id. */

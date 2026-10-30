@@ -326,12 +326,13 @@ function LaunchCard({ clientId }: { clientId: string }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("client_launches")
-        .select("id, status, day0_date, launch_date, closed_reason, no_launch_checklist, plans(name, duration_weeks, sort_order), client_tasks(id, status), historical_launch_tasks(id, status)")
+        .select("id, status, day0_date, launch_date, closed_reason, no_launch_checklist, core_onboarding_completed_at, plans(name, duration_weeks, sort_order), client_gates(gate_code, status), client_tasks(id, status), historical_launch_tasks(id, status)")
         .eq("client_id", clientId)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data as unknown as Array<{
         id: string; status: string; day0_date: string | null; launch_date: string | null; closed_reason: string | null; no_launch_checklist: boolean;
+        core_onboarding_completed_at: string | null; client_gates: Array<{ gate_code: string; status: string }>;
         plans: { name: string; duration_weeks: number; sort_order: number } | null; client_tasks: Array<{ id: string; status: string }>; historical_launch_tasks: Array<{ id: string; status: string }>;
       }>;
     },
@@ -453,6 +454,8 @@ function LaunchCard({ clientId }: { clientId: string }) {
   const week = launchWeek(latest.day0_date, n);
   const done = latest.client_tasks.filter((t) => t.status === "done" || t.status === "not_applicable").length;
   const pct = latest.client_tasks.length ? Math.round((done / latest.client_tasks.length) * 100) : 0;
+  const coreLive = latest.no_launch_checklist || latest.core_onboarding_completed_at != null || latest.client_gates.some((g) => g.gate_code === "gate_a" && g.status === "signed");
+  const displayStatus = coreLive && latest.status === "active" ? "live" : latest.status;
   const history = launches.data!.slice(1);
   const higherPlans = (plans.data ?? []).filter((p) => latest.plans && p.sort_order > latest.plans.sort_order);
   const allClosed = latest.status === "closed";
@@ -461,7 +464,7 @@ function LaunchCard({ clientId }: { clientId: string }) {
       <CardHeader className="pb-2">
         <CardTitle className="flex flex-wrap items-center gap-2 text-section-title font-semibold">
           Launch
-          <StatusBadge status={latest.no_launch_checklist && latest.status === "active" ? "live" : latest.status} label={latest.no_launch_checklist && latest.status === "active" ? "Live" : LAUNCH_STATUS_LABEL[latest.status] ?? latest.status} />
+          <StatusBadge status={displayStatus} label={displayStatus === "live" && latest.status === "active" ? "Live" : LAUNCH_STATUS_LABEL[displayStatus] ?? displayStatus} />
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
@@ -493,6 +496,7 @@ function LaunchCard({ clientId }: { clientId: string }) {
         ) : (
           <>
             {latest.no_launch_checklist ? <p className="font-medium">{latest.historical_launch_tasks.length ? `Historical onboarding complete · ${latest.historical_launch_tasks.length} tasks done` : "Live, no checklist"}</p> : <><p>{latest.plans?.name} · {week === null ? "Not started" : `Week ${week} of ${n}`} · {pct}% done</p>
+            {coreLive && latest.status === "active" ? <p className="text-xs text-muted-foreground">Core onboarding complete. Assigned pipelines continue through their roadmap gates.</p> : null}
             <div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary" style={{ width: `${pct}%` }} /></div></>}
           </>
         )}
@@ -678,7 +682,7 @@ function ClientProfile() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("clients")
-        .select("*, client_pipelines(id, pipeline_id, weight, status, monthly_target, pipelines(name, code), profiles:manager_id(full_name))")
+        .select("*, client_pipelines(id, pipeline_id, weight, status, monthly_target, pipelines(name, code), profiles:manager_id(full_name)), client_launches(id, status, no_launch_checklist, core_onboarding_completed_at, created_at, client_gates(gate_code, status))")
         .eq("id", clientId)
         .single();
       if (error) throw error;
@@ -698,6 +702,7 @@ function ClientProfile() {
           pipelines: { name: string; code: string } | null;
           profiles: { full_name: string } | null;
         }>;
+        client_launches: Array<{ id: string; status: string; no_launch_checklist: boolean; core_onboarding_completed_at: string | null; created_at: string; client_gates: Array<{ gate_code: string; status: string }> }>;
       };
     },
   });
@@ -820,6 +825,9 @@ function ClientProfile() {
   if (!client) return <p className="text-small text-muted-foreground">Loading client…</p>;
 
   const clientCode = (client["client_code"] as string | null) ?? null;
+  const statusLaunch = [...client.client_launches].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  const coreLive = Boolean(statusLaunch && (statusLaunch.no_launch_checklist || statusLaunch.core_onboarding_completed_at || statusLaunch.client_gates.some((g) => g.gate_code === "gate_a" && g.status === "signed")));
+  const clientDisplayStatus = coreLive && statusLaunch?.status === "active" ? "live" : client.onboarding_status;
   const money = (v: number | null | undefined) => (v != null ? inrFmt(Number(v)) : "—");
   const properties: PropertyGroup[] = [
     ...(canCommercial && comm
@@ -893,7 +901,7 @@ function ClientProfile() {
                 {clientCode}
               </span>
             ) : null}
-            <StatusBadge status={client.onboarding_status} label={client.onboarding_status} />
+            <StatusBadge status={clientDisplayStatus} label={clientDisplayStatus === "live" ? "Live" : clientDisplayStatus} />
             <StatusBadge status={client.payment_status} label={`Payment: ${client.payment_status}`} />
           </>
         }

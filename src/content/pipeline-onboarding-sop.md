@@ -6,8 +6,10 @@
 ## How Alcor North Star should use this SOP
 - Create one onboarding record/workflow per client.
 - Set Day 0 as the date when the signed agreement AND advance have both been received.
+- Complete P0 Core Onboarding and clear Gate A within 15 days of Day 0. The client is then shown as Live; this is the core setup milestone, not completion of every pipeline.
 - Select the contracted plan and activate only the contracted pipeline modules. P0 Core Onboarding is always active.
 - Assign one named Pipeline Manager to each active pipeline.
+- Start assigned pipeline work after Gate A clears. Preserve the contracted roadmap sequence and durations; North Star anchors pipeline task due dates from the Gate A sign-off date.
 - Work each pipeline in order: A — Access → B — Inputs → C — Activation → D — Go-Live QC Gate → E — Day-0 Baseline.
 - Do not start C before B is complete.
 - Every Done status must have evidence: screenshot, Drive file, live URL, or other proof.
@@ -30,7 +32,7 @@
 ## Client Setup
 - **CLIENT SETUP:**
 - **Property Name:**  — Exactly as it will appear everywhere (NAP source of truth)
-- **Day 0 Date:**  — Date signed agreement AND advance were both received — drives every Due Date
+- **Day 0 Date:**  — Date signed agreement AND advance were both received — sets the 15-day core deadline; pipeline task dates are anchored from Gate A sign-off
 - **Plan Contracted:**  — GMB SEO / GMB+SMM / GMB+SMM+Perf / Growing Hotelier / Pro Hotelier
 - **Account Manager:**  — Single client-facing owner of this activation
 - **Client POC — Primary:**  — Name · mobile · email
@@ -41,7 +43,7 @@
 |---|---|---|---:|
 | PIPELINE STATUS | None | None | None |
 | Pipeline | Pipeline Manager | Window | Tasks |
-| P0  CORE ONBOARDING | Account Manager (Onboarding Owner) | Day 0 → Day 7. Hard gate: no pipeline starts until Gate A clears. | 99 |
+| P0  CORE ONBOARDING | Account Manager (Onboarding Owner) | Day 0 → Day 15. Hard gate: assigned pipeline work starts after Gate A clears. Signing Gate A marks the core setup Live; pipeline roadmaps continue through their own gates. | 99 |
 | P1  GMB SEO | GMB SEO Manager | Day 1 → Day 12. This is the fastest-yielding pipeline — start it first. | 75 |
 | P2  SOCIAL MEDIA MARKETING | Social Media Manager | Day 2 → Day 15. First post live by Day 12. | 65 |
 | P3  PERFORMANCE MARKETING | Performance Marketing Manager | Day 5 → Day 20. Do not launch before tracking is verified firing. | 74 |
@@ -52,7 +54,7 @@
 ## Pipeline Task Library
 
 # P0  ·  CORE ONBOARDING — The Shared Foundation
-**Pipeline Manager: Account Manager (Onboarding Owner)   |   Window: Day 0 → Day 7. Hard gate: no pipeline starts until Gate A clears.**
+**Pipeline Manager: Account Manager (Onboarding Owner)   |   Window: Day 0 → Day 15. Hard gate: assigned pipeline work starts after Gate A clears.**
 **Total tasks:** None
 
 ## A · Access & Credentials
@@ -1140,9 +1142,11 @@ If the client purchases one pipeline, activate only that pipeline's task library
 If the client purchases a multi-pipeline package, activate every pipeline included in the signed scope. The system must allow BD/Admin to add or remove pipelines before activation is finalised.
 
 ## Completion logic
+A client is marked **Live** when the P0 Core Onboarding Gate is cleared, targeted within 15 days of Day 0. This means core setup is complete; assigned pipeline work then proceeds through its roadmap.
+
 A pipeline may be marked **Live** only when every mandatory D — GO-LIVE QC GATE task is **Done**.
 
-The client onboarding may be marked **Complete** only when:
+The full client onboarding may be marked **Complete** only when:
 - P0 Core Onboarding Gate is cleared
 - All contracted pipeline gates are cleared
 - All required evidence is present

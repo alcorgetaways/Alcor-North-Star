@@ -1,5 +1,4 @@
 import { marketingSearch } from "@/lib/property-filter";
-import { PortfolioMainKpis } from "@/components/MainKpis";
 import { BdTargetsPanel } from "@/components/BdPanels";
 import { demoIn } from "@/lib/demo";
 import { fetchAll } from "@/lib/fetch-all";
@@ -131,10 +130,10 @@ function Dashboard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("client_launches")
-        .select("id, client_id, status").not("client_id", "in", demoIn())
+        .select("id, client_id, status, no_launch_checklist, core_onboarding_completed_at, client_gates(gate_code, status)").not("client_id", "in", demoIn())
         .in("status", ["active", "live", "offboarding"]);
       if (error) throw error;
-      return data as Array<{ id: string; client_id: string; status: string }>;
+      return data as unknown as Array<{ id: string; client_id: string; status: string; no_launch_checklist: boolean; core_onboarding_completed_at: string | null; client_gates: Array<{ gate_code: string; status: string }> }>;
     },
   });
 
@@ -428,7 +427,6 @@ function Dashboard() {
         <MetricCard label="Active hotels" value={activeClientIds.size} footer="With an open launch" />
       </div>
 
-      <PortfolioMainKpis month={lastMonth} />
       {isManager || isBD ? <MarketingPerformance granularity={period} /> : marketingOnly ? <MarketingPerformance only={marketingOnly} granularity={period} /> : null}
 
       {isBD ? <PlanCommissionList /> : null}
@@ -439,8 +437,8 @@ function Dashboard() {
           <h2 className="text-section-title font-semibold">Launches &amp; clients</h2>
           <p className="text-xs text-muted-foreground">Each hotel counts once; every purchase is a launch under it.</p>
           <MetricGrid className="mt-4">
-            <MetricCard label="Setting up" value={activeLaunches.filter((l) => l.status === "active").length} footer="Onboarding in progress" />
-            <MetricCard label="Live" value={activeLaunches.filter((l) => l.status === "live").length} />
+            <MetricCard label="Setting up" value={activeLaunches.filter((l) => l.status === "active" && !l.no_launch_checklist && !l.core_onboarding_completed_at && !l.client_gates.some((g) => g.gate_code === "gate_a" && g.status === "signed")).length} footer="Core onboarding in progress" />
+            <MetricCard label="Live" value={activeLaunches.filter((l) => l.status !== "offboarding" && (l.status === "live" || l.no_launch_checklist || l.core_onboarding_completed_at != null || l.client_gates.some((g) => g.gate_code === "gate_a" && g.status === "signed"))).length} />
             <MetricCard label="Behind schedule" value={null} missing="See Launch overview" footer={<Link to="/launch-overview" className="text-primary hover:underline">Overdue tasks per launch →</Link>} />
             <MetricCard label="Exiting" value={activeLaunches.filter((l) => l.status === "offboarding").length} tone={activeLaunches.some((l) => l.status === "offboarding") ? "danger" : "default"} />
           </MetricGrid>

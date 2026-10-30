@@ -1088,6 +1088,8 @@ export type Database = {
           contract_signed_on: string | null
           contract_start: string | null
           contract_start_approx: boolean
+          core_onboarding_completed_at: string | null
+          core_onboarding_due_date: string | null
           created_at: string
           created_by: string | null
           crm_option: string | null

@@ -1,7 +1,6 @@
 import { demoIn } from "@/lib/demo";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -81,20 +80,6 @@ function OnboardingDashboard() {
       <PageHeader
         title="BD Onboarding"
         description="Hotels still being set up: pick up a draft or confirm Day 0 and activate the team."
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline">
-              <Link to="/onboarding-sop">
-                <BookOpen className="mr-2 h-4 w-4" /> Onboarding SOP
-              </Link>
-            </Button>
-            <Button asChild>
-              <Link to="/clients/new" search={{}}>
-                <Plus className="mr-2 h-4 w-4" /> New client onboarding
-              </Link>
-            </Button>
-          </div>
-        }
       />
 
       <section className="space-y-4">
@@ -104,7 +89,7 @@ function OnboardingDashboard() {
           rowKey={(d) => d.id}
           loading={isLoading}
           emptyMessage="No launches are being set up right now."
-          emptyHint="Start a new client onboarding above."
+          emptyHint="There are no onboarding drafts to continue right now."
           columns={[
             {
               key: "hotel",
